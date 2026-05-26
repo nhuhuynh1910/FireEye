@@ -1,3 +1,6 @@
-flask
-flask-cors
+fastapi
+uvicorn
 opencv-python
+paho-mqtt
+requests
+python-multipart

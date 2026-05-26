@@ -1,34 +1,44 @@
-# routes/sensor_route.py
+from fastapi import APIRouter
+from pydantic import BaseModel
 
-from flask import Blueprint, jsonify, request
 from data.state import get_sensor_state, update_sensor
+from services.mqtt_service import mqtt_service
 
-sensor_bp = Blueprint("sensor", __name__)
+router = APIRouter()
 
 
-@sensor_bp.route("/api/sensors", methods=["GET"])
+class SensorRequest(BaseModel):
+    smokeDetected: bool = False
+    flameDetected: bool = False
+    smokeValue: int = 0
+    flameValue: int = 0
+    node: str | None = None
+
+
+@router.get("/api/sensors")
 def get_sensors():
-    return jsonify(get_sensor_state())
+    return get_sensor_state()
 
 
-@sensor_bp.route("/api/sensors/update", methods=["POST"])
-def update_sensors():
-    data = request.get_json()
-
-    smoke_detected = data.get("smokeDetected", False)
-    flame_detected = data.get("flameDetected", False)
-    smoke_value = data.get("smokeValue", 0)
-    flame_value = data.get("flameValue", 0)
-
-    update_sensor(
-        smoke_detected=smoke_detected,
-        flame_detected=flame_detected,
-        smoke_value=smoke_value,
-        flame_value=flame_value
+@router.post("/api/sensors/update")
+def update_sensors(data: SensorRequest):
+    result = update_sensor(
+        smoke_detected=data.smokeDetected,
+        flame_detected=data.flameDetected,
+        smoke_value=data.smokeValue,
+        flame_value=data.flameValue,
+        node=data.node
     )
 
-    return jsonify({
+    if result["alertLevel"] != "safe":
+        mqtt_service.publish_alert({
+            "source": "sensor",
+            "alertLevel": result["alertLevel"],
+            "data": result
+        })
+
+    return {
         "success": True,
         "message": "Sensor data updated",
-        "data": get_sensor_state()
-    })
+        "data": result
+    }

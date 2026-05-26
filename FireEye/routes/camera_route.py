@@ -1,27 +1,28 @@
-# test cam dahua LAN
-from flask import Blueprint, jsonify, Response
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
+
 from services.camera_service import camera_service
 from services.stream_service import generate_camera_stream
 from config.settings import CAMERA_IP
 
-camera_bp = Blueprint("camera", __name__)
+router = APIRouter()
 
 
-@camera_bp.route("/api/camera/status", methods=["GET"])
+@router.get("/api/camera/status")
 def camera_status():
     online = camera_service.check_camera()
 
-    return jsonify({
+    return {
         "cameraOnline": online,
         "cameraType": "Dahua IP Camera LAN",
         "cameraIP": CAMERA_IP,
         "message": "Dahua camera connected" if online else "Dahua camera offline"
-    })
+    }
 
 
-@camera_bp.route("/api/camera/stream", methods=["GET"])
+@router.get("/api/camera/stream")
 def camera_stream():
-    return Response(
+    return StreamingResponse(
         generate_camera_stream(),
-        mimetype="multipart/x-mixed-replace; boundary=frame"
+        media_type="multipart/x-mixed-replace; boundary=frame"
     )

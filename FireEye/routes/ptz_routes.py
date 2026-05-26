@@ -1,49 +1,52 @@
-# -*- coding: utf-8 -*-
+from fastapi import APIRouter
+from pydantic import BaseModel
 
-from flask import Blueprint, jsonify, request
 from services.camera_service import camera_service
 
-ptz_bp = Blueprint("ptz", __name__)
+router = APIRouter()
 
-@ptz_bp.route("/api/camera/left", methods=["POST"])
+
+class StopRequest(BaseModel):
+    code: str = "left"
+
+
+@router.post("/api/camera/left")
 def camera_left():
     ok = camera_service.move_left()
-    return jsonify({"success": ok, "action": "left"})
+    return {"success": ok, "action": "left"}
 
-@ptz_bp.route("/api/camera/right", methods=["POST"])
+
+@router.post("/api/camera/right")
 def camera_right():
     ok = camera_service.move_right()
-    return jsonify({"success": ok, "action": "right"})
+    return {"success": ok, "action": "right"}
 
-@ptz_bp.route("/api/camera/up", methods=["POST"])
+
+@router.post("/api/camera/up")
 def camera_up():
     ok = camera_service.move_up()
-    return jsonify({"success": ok, "action": "up"})
+    return {"success": ok, "action": "up"}
 
-@ptz_bp.route("/api/camera/down", methods=["POST"])
+
+@router.post("/api/camera/down")
 def camera_down():
     ok = camera_service.move_down()
-    return jsonify({"success": ok, "action": "down"})
+    return {"success": ok, "action": "down"}
 
-@ptz_bp.route("/api/camera/zoom-in", methods=["POST"])
+
+@router.post("/api/camera/zoom-in")
 def camera_zoom_in():
     ok = camera_service.zoom_in()
-    return jsonify({"success": ok, "action": "zoom-in"})
+    return {"success": ok, "action": "zoom-in"}
 
-@ptz_bp.route("/api/camera/zoom-out", methods=["POST"])
+
+@router.post("/api/camera/zoom-out")
 def camera_zoom_out():
     ok = camera_service.zoom_out()
-    return jsonify({"success": ok, "action": "zoom-out"})
+    return {"success": ok, "action": "zoom-out"}
 
-@ptz_bp.route("/api/camera/stop", methods=["POST"])
-def camera_stop():
-    data = request.get_json(silent=True) or {}
-    code = data.get("code", "Left")
 
-    ok = camera_service.stop(code)
-
-    return jsonify({
-        "success": ok,
-        "action": "stop",
-        "code": code
-    })
+@router.post("/api/camera/stop")
+def camera_stop(data: StopRequest):
+    ok = camera_service.stop(data.code)
+    return {"success": ok, "action": "stop", "code": data.code}
