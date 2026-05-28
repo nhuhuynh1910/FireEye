@@ -1,67 +1,268 @@
 /* pages/Settings.jsx */
 import React, { useState } from 'react';
+import { api } from '../services/api';
+import { useSystem } from '../store/SystemContext';
 
 export const Settings = () => {
-    const [smokeSens, setSmokeSens] = useState(12);
-    const [flameSens, setFlameSens] = useState(8);
-    const [aiDetection, setAiDetection] = useState(true);
-    const [motionAlerts, setMotionAlerts] = useState(true);
+    const { fetchEvents } = useSystem();
+
+    // IoT Sensor simulation states
+    const [smokeValue, setSmokeValue] = useState(12);
+    const [flameValue, setFlameValue] = useState(8);
+    const [smokeDetected, setSmokeDetected] = useState(false);
+    const [flameDetected, setFlameDetected] = useState(false);
+    const [sensorNode, setSensorNode] = useState("Node-01");
+    const [isUpdatingSensors, setIsUpdatingSensors] = useState(false);
+
+    // AI simulation states
+    const [aiFire, setAiFire] = useState(false);
+    const [aiSmoke, setAiSmoke] = useState(false);
+    const [aiHuman, setAiHuman] = useState(false);
+    const [aiConfidence, setAiConfidence] = useState(0.85);
+    const [isTriggeringAI, setIsTriggeringAI] = useState(false);
+
+    const handleUpdateSensors = async (e) => {
+        e.preventDefault();
+        setIsUpdatingSensors(true);
+        try {
+            await api.updateSensors({
+                smokeDetected,
+                flameDetected,
+                smokeValue,
+                flameValue,
+                node: sensorNode
+            });
+            alert("IoT Sensor status synchronized with FastAPI backend!");
+            fetchEvents();
+        } catch (err) {
+            console.error("Failed to update sensors:", err);
+            alert("Lỗi kết nối tới backend.");
+        } finally {
+            setIsUpdatingSensors(false);
+        }
+    };
+
+    const handleTriggerAIDetect = async (e) => {
+        e.preventDefault();
+        setIsTriggeringAI(true);
+        try {
+            const res = await api.triggerAIDetect({
+                fire: aiFire,
+                smoke: aiSmoke,
+                human: aiHuman,
+                confidence: parseFloat(aiConfidence)
+            });
+            alert(`AI Analysis trigger: ${res.risk_level} state registered.`);
+            fetchEvents();
+        } catch (err) {
+            console.error("Failed to trigger AI alert:", err);
+            alert("Lỗi kết nối tới backend.");
+        } finally {
+            setIsTriggeringAI(false);
+        }
+    };
+
+    const handleResetAll = async () => {
+        setIsUpdatingSensors(true);
+        setIsTriggeringAI(true);
+        try {
+            await api.updateSensors({
+                smokeDetected: false,
+                flameDetected: false,
+                smokeValue: 12,
+                flameValue: 5,
+                node: sensorNode
+            });
+            await api.triggerAIDetect({
+                fire: false,
+                smoke: false,
+                human: false,
+                confidence: 0.0
+            });
+            // Reset local states
+            setSmokeValue(12);
+            setFlameValue(5);
+            setSmokeDetected(false);
+            setFlameDetected(false);
+            setAiFire(false);
+            setAiSmoke(false);
+            setAiHuman(false);
+            setAiConfidence(0.0);
+            alert("All simulated inputs set back to SAFE states.");
+            fetchEvents();
+        } catch (err) {
+            console.error("Reset failed:", err);
+        } finally {
+            setIsUpdatingSensors(false);
+            setIsTriggeringAI(false);
+        }
+    };
 
     return (
-        <div className="settings-container">
+        <div className="settings-workspace">
+            {/* IoT Sensor Controller */}
             <div className="settings-card">
-                <h2>Surveillance Integration Settings</h2>
-                <div className="settings-group">
-                    <h3>Hardware Accessories</h3>
-                    <div className="setting-item">
-                        <label htmlFor="smoke-sensor-sim">Smoke Detection Sensitivity (Simulated): {smokeSens}</label>
+                <h3 className="face-db-title">IoT HARDWARE NODE EMULATOR</h3>
+                <form onSubmit={handleUpdateSensors}>
+                    <div className="input-group">
+                        <label htmlFor="sensor-node-id">SENSOR NODE ID</label>
                         <input
-                            type="range"
-                            id="smoke-sensor-sim"
-                            min="0"
-                            max="100"
-                            value={smokeSens}
-                            onChange={(e) => setSmokeSens(parseInt(e.target.value))}
+                            type="text"
+                            id="sensor-node-id"
+                            value={sensorNode}
+                            onChange={(e) => setSensorNode(e.target.value)}
                         />
                     </div>
-                    <div className="setting-item">
-                        <label htmlFor="flame-sensor-sim">Flame Detection Sensitivity (Simulated): {flameSens}</label>
+
+                    <div className="setting-slider-item">
+                        <div className="setting-slider-header">
+                            <span>SMOKE LEVEL</span>
+                            <span className="val">{smokeValue} ppm</span>
+                        </div>
                         <input
                             type="range"
-                            id="flame-sensor-sim"
                             min="0"
-                            max="100"
-                            value={flameSens}
-                            onChange={(e) => setFlameSens(parseInt(e.target.value))}
+                            max="800"
+                            value={smokeValue}
+                            onChange={(e) => setSmokeValue(parseInt(e.target.value))}
                         />
                     </div>
-                </div>
-                
-                <div className="settings-group">
-                    <h3>AI Intelligent Video Analytics</h3>
-                    <div className="setting-item-toggle">
-                        <span>Object Detection (NPU Accelerated)</span>
-                        <label className="switch">
+
+                    <div className="setting-slider-item">
+                        <div className="setting-slider-header">
+                            <span>FLAME SPECTRUM LEVEL</span>
+                            <span className="val">{flameValue}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={flameValue}
+                            onChange={(e) => setFlameValue(parseInt(e.target.value))}
+                        />
+                    </div>
+
+                    <div className="setting-toggle-item">
+                        <div className="setting-toggle-info">
+                            <span className="setting-toggle-label">SMOKE THRESHOLD ALARM</span>
+                            <span className="setting-toggle-desc">Trigger alarm based on particle density</span>
+                        </div>
+                        <label className="switch-container">
                             <input
                                 type="checkbox"
-                                checked={aiDetection}
-                                onChange={(e) => setAiDetection(e.target.checked)}
+                                checked={smokeDetected}
+                                onChange={(e) => setSmokeDetected(e.target.checked)}
                             />
-                            <span className="slider"></span>
+                            <span className="switch-slider"></span>
                         </label>
                     </div>
-                    <div className="setting-item-toggle">
-                        <span>Motion Detection Alerts</span>
-                        <label className="switch">
+
+                    <div className="setting-toggle-item">
+                        <div className="setting-toggle-info">
+                            <span className="setting-toggle-label">FLAME SPECTRUM ALARM</span>
+                            <span className="setting-toggle-desc">Trigger alarm based on IR wavelengths</span>
+                        </div>
+                        <label className="switch-container">
                             <input
                                 type="checkbox"
-                                checked={motionAlerts}
-                                onChange={(e) => setMotionAlerts(e.target.checked)}
+                                checked={flameDetected}
+                                onChange={(e) => setFlameDetected(e.target.checked)}
                             />
-                            <span className="slider"></span>
+                            <span className="switch-slider"></span>
                         </label>
                     </div>
-                </div>
+
+                    <button
+                        type="submit"
+                        className="btn-tech-action primary"
+                        disabled={isUpdatingSensors}
+                        style={{ width: '100%', marginTop: '20px' }}
+                    >
+                        {isUpdatingSensors ? "TRANSMITTING TELEMETRY..." : "UPDATE HARDWARE STATE"}
+                    </button>
+                </form>
+            </div>
+
+            {/* AI Vision Analytic Controller */}
+            <div className="settings-card">
+                <h3 className="face-db-title">YOLOv8 AI CORE INJECTOR</h3>
+                <form onSubmit={handleTriggerAIDetect}>
+                    <div className="setting-toggle-item">
+                        <div className="setting-toggle-info">
+                            <span className="setting-toggle-label">TARGET FIRE DETECTION</span>
+                            <span className="setting-toggle-desc">Overlay fire bounding box on feed</span>
+                        </div>
+                        <label className="switch-container">
+                            <input
+                                type="checkbox"
+                                checked={aiFire}
+                                onChange={(e) => setAiFire(e.target.checked)}
+                            />
+                            <span className="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div className="setting-toggle-item">
+                        <div className="setting-toggle-info">
+                            <span className="setting-toggle-label">TARGET SMOKE CLOUD DETECT</span>
+                            <span className="setting-toggle-desc">Overlay smoke bounding box on feed</span>
+                        </div>
+                        <label className="switch-container">
+                            <input
+                                type="checkbox"
+                                checked={aiSmoke}
+                                onChange={(e) => setAiSmoke(e.target.checked)}
+                            />
+                            <span className="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div className="setting-toggle-item">
+                        <div className="setting-toggle-info">
+                            <span className="setting-toggle-label">HUMAN DETECTED IN ZONE</span>
+                            <span className="setting-toggle-desc">Escalate severity if life safety is compromised</span>
+                        </div>
+                        <label className="switch-container">
+                            <input
+                                type="checkbox"
+                                checked={aiHuman}
+                                onChange={(e) => setAiHuman(e.target.checked)}
+                            />
+                            <span className="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div className="setting-slider-item" style={{ marginTop: '16px' }}>
+                        <div className="setting-slider-header">
+                            <span>ANALYSIS CONFIDENCE SCORE</span>
+                            <span className="val">{(aiConfidence * 100).toFixed(0)}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={aiConfidence * 100}
+                            onChange={(e) => setAiConfidence(parseFloat(e.target.value) / 100)}
+                        />
+                    </div>
+
+                    <button
+                        type="submit"
+                        className="btn-tech-action primary"
+                        disabled={isTriggeringAI}
+                        style={{ width: '100%', marginTop: '34px' }}
+                    >
+                        {isTriggeringAI ? "INJECTING ANALYSIS..." : "TRIGGER AI ALARM STATE"}
+                    </button>
+                </form>
+
+                <button
+                    className="btn-tech-action"
+                    onClick={handleResetAll}
+                    style={{ width: '100%', marginTop: '12px', borderColor: 'var(--accent-red)', color: 'var(--accent-red)' }}
+                >
+                    RESET SECURITY SHIELD (SAFE STATE)
+                </button>
             </div>
         </div>
     );
