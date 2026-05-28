@@ -1,6 +1,7 @@
 import cv2
 import json
 import numpy as np
+import uuid
 from pathlib import Path
 from insightface.app import FaceAnalysis
 
@@ -50,7 +51,8 @@ def register_face_from_image(
     face = faces[0]
     embedding = face.embedding
 
-    avatar_name = f"{name.replace(' ', '_').lower()}.jpg"
+    # Sử dụng UUID để đặt tên file avatar an toàn tránh Path Traversal
+    avatar_name = f"{uuid.uuid4().hex}.jpg"
     avatar_path = FACE_DIR / avatar_name
 
     cv2.imwrite(str(avatar_path), img)

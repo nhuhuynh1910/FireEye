@@ -21,10 +21,13 @@ def capture_snapshot(event_type: str = "event"):
     if not ret:
         return None
 
+    # Resize frame to 960x540 to align with the frontend bounding box coordinates
+    frame_resized = cv2.resize(frame, (960, 540))
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{event_type.lower()}_{timestamp}.jpg"
     file_path = SNAPSHOT_DIR / filename
 
-    cv2.imwrite(str(file_path), frame)
+    cv2.imwrite(str(file_path), frame_resized)
 
     return f"/static/snapshots/{filename}"

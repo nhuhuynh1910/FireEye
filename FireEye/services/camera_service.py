@@ -1,5 +1,7 @@
 import cv2
-import urllib.request
+import requests
+import time
+from requests.auth import HTTPDigestAuth
 from config.settings import (
     CAMERA_RTSP_URL,
     DAHUA_BASE_URL,
@@ -16,24 +18,30 @@ class CameraService:
         self.username = CAMERA_USERNAME
         self.password = CAMERA_PASSWORD
         self.channel = PTZ_CHANNEL
-
-        # Thiết lập HTTP Digest Authentication để gọi lệnh CGI tới camera Dahua
-        password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
-        password_mgr.add_password(None, self.base_url, self.username, self.password)
-        auth_handler = urllib.request.HTTPDigestAuthHandler(password_mgr)
-        self.opener = urllib.request.build_opener(auth_handler)
+        self.auth = HTTPDigestAuth(self.username, self.password)
+        self._last_check_time = 0.0
+        self._last_online_status = False
 
     def check_camera(self):
+        now = time.time()
+        # Throttles camera checks to at most once every 15 seconds to prevent spamming Dahua RTSP
+        if now - self._last_check_time < 15.0:
+            return self._last_online_status
+
         cap = cv2.VideoCapture(self.camera_url, cv2.CAP_FFMPEG)
 
         if not cap.isOpened():
             cap.release()
+            self._last_online_status = False
+            self._last_check_time = now
             return False
 
         ret, frame = cap.read()
         cap.release()
 
-        return ret
+        self._last_online_status = bool(ret)
+        self._last_check_time = now
+        return self._last_online_status
 
     def get_capture(self):
         return cv2.VideoCapture(self.camera_url, cv2.CAP_FFMPEG)
@@ -47,10 +55,14 @@ class CameraService:
             f"action={action}&code={code}&channel={self.channel}&arg1=0&arg2={speed}&arg3=0"
         )
         try:
-            # Gửi HTTP request sử dụng Digest opener thiết lập sẵn
-            with self.opener.open(url, timeout=2) as response:
-                result = response.read().decode("utf-8")
+            # Gửi HTTP request sử dụng requests DigestAuth
+            response = requests.get(url, auth=self.auth, timeout=2)
+            if response.status_code == 200:
+                result = response.text
                 return "OK" in result or "ok" in result.lower()
+            else:
+                print(f"Lỗi gửi lệnh PTZ tới Dahua ({code}): HTTP {response.status_code}")
+                return False
         except Exception as e:
             print(f"Lỗi gửi lệnh PTZ tới Dahua ({code}): {e}")
             return False
