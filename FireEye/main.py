@@ -11,7 +11,7 @@ from routes.ai_route import router as ai_router
 from routes.ptz_routes import router as ptz_router
 from routes.mqtt_route import router as mqtt_router
 from routes.event_route import router as event_router
-
+from routes.face_route import router as face_router
 from services.mqtt_service import mqtt_service
 from services.db_service import init_db
 
@@ -40,7 +40,7 @@ app.include_router(ai_router)
 app.include_router(ptz_router)
 app.include_router(mqtt_router)
 app.include_router(event_router)
-
+app.include_router(face_router)
 
 @app.on_event("startup")
 def startup_event():
@@ -71,7 +71,9 @@ def home():
             "/api/ai/detect",
             "/api/mqtt/status",
             "/api/events",
-
+"/api/faces/register",
+"/api/faces/match",
+"/api/faces/people",
             "/api/camera/left",
             "/api/camera/right",
             "/api/camera/up",

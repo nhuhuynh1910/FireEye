@@ -8,25 +8,29 @@
 }
 
 :root {
-    --bg-deep: #07080a;
-    --bg-panel: #111317;
-    --bg-card: #181b20;
-    --bg-card-hover: #22262e;
+    --bg-deep: #ffffff;
+    --bg-panel: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f1f5f9;
     
-    --border-color: #262b35;
-    --border-active: #00f0ff;
+    --border-color: #e2e8f0;
+    --border-active: #0ea5e9;
     
-    --text-primary: #f0f2f5;
-    --text-secondary: #9aa5b5;
-    --text-muted: #5e6b7e;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
     
-    --accent-cyan: #00f0ff;
-    --accent-green: #39ff14;
-    --accent-red: #ff3b30;
-    --accent-yellow: #ffcc00;
+    --accent-cyan: #0ea5e9;
+    --accent-blue-logo: #2563eb;
+    --accent-orange-logo: #f97316;
+    --accent-red-logo: #ef4444;
     
-    --glow-cyan: 0 0 12px rgba(0, 240, 255, 0.4);
-    --glow-green: 0 0 12px rgba(57, 255, 20, 0.4);
+    --accent-green: #22c55e;
+    --accent-red: #ef4444;
+    --accent-yellow: #f59e0b;
+    
+    --glow-cyan: 0 4px 12px rgba(14, 165, 233, 0.15);
+    --glow-green: 0 4px 12px rgba(34, 197, 94, 0.15);
     
     --transition-speed: 0.25s;
     
