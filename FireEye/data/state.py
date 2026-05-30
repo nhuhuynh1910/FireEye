@@ -16,7 +16,8 @@ ai_state = {
     "smokeDetected": False,
     "confidence": 0.0,
     "alertLevel": "safe",
-    "lastUpdated": None
+    "lastUpdated": None,
+    "bbox": None
 }
 
 sprinkler_state = {
@@ -59,12 +60,13 @@ def get_sensor_state():
     return sensor_state
 
 
-def update_ai_detection(fire_detected, smoke_detected, confidence):
+def update_ai_detection(fire_detected, smoke_detected, confidence, bbox=None):
     ai_state["fireDetected"] = fire_detected
     ai_state["smokeDetected"] = smoke_detected
     ai_state["confidence"] = confidence
     ai_state["alertLevel"] = calc_alert(smoke_detected, fire_detected)
     ai_state["lastUpdated"] = now()
+    ai_state["bbox"] = bbox
 
     return ai_state
 

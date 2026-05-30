@@ -6,7 +6,9 @@ from config.settings import (
     MQTT_PORT,
     MQTT_SENSOR_TOPIC,
     MQTT_ALERT_TOPIC,
-    MQTT_CONTROL_TOPIC
+    MQTT_CONTROL_TOPIC,
+    MQTT_USERNAME,
+    MQTT_PASSWORD
 )
 
 from data.state import update_sensor, update_sprinkler
@@ -22,6 +24,8 @@ class MQTTService:
 
     def start(self):
         try:
+            if MQTT_USERNAME and MQTT_PASSWORD:
+                self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
             self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
             self.client.loop_start()
             print("MQTT service started")

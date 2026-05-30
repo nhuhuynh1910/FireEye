@@ -1,12 +1,15 @@
 /* pages/FaceDatabase.jsx */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../services/api';
+import { useSystem } from '../store/SystemContext';
 
 const API_BASE_URL = typeof window !== 'undefined' 
     ? `http://${window.location.hostname}:8000` 
     : "http://127.0.0.1:8000";
 
 export const FaceDatabase = () => {
+    const { faceWatchActive, toggleFaceWatch } = useSystem();
+
     // Registry form
     const [regName, setRegName] = useState("");
     const [regRole, setRegRole] = useState("Operator");
@@ -111,6 +114,27 @@ export const FaceDatabase = () => {
             {/* Left Module: Verification and Registry Forms */}
             <div className="face-db-card">
                 <h3 className="face-db-title">FACE VERIFICATION HUD</h3>
+
+                {/* Real-time Watcher Service Control */}
+                <div className="face-verification-box face-watcher-box">
+                    <div className="face-watcher-header">
+                        <span className="face-watcher-title">REAL-TIME AUTO WATCHER</span>
+                        <span className={`face-watcher-status-badge ${faceWatchActive ? 'running' : 'stopped'}`}>
+                            {faceWatchActive ? 'RUNNING' : 'STOPPED'}
+                        </span>
+                    </div>
+                    <p className="face-watcher-desc">
+                        Continuous scanning of Dahua camera stream for real-time face authentication.
+                    </p>
+                    <button
+                        type="button"
+                        className={`btn-tech-action ${faceWatchActive ? 'danger' : 'primary'}`}
+                        onClick={toggleFaceWatch}
+                        style={{ marginTop: '8px', width: '100%' }}
+                    >
+                        {faceWatchActive ? 'DEACTIVATE AUTO WATCHER' : 'ACTIVATE AUTO WATCHER'}
+                    </button>
+                </div>
 
                 {/* Camera Match Trigger */}
                 <div className="face-verification-box">

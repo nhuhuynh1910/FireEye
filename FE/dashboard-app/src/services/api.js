@@ -178,5 +178,83 @@ export const api = {
         });
         if (!response.ok) throw new Error("Failed to update AI detection");
         return response.json();
+    },
+
+    /**
+     * Get MQTT status
+     */
+    async getMQTTStatus() {
+        const response = await fetch(`${API_BASE_URL}/api/mqtt/status`);
+        if (!response.ok) throw new Error("Failed to fetch MQTT status");
+        return response.json();
+    },
+
+    /**
+     * Get Sprinkler status
+     */
+    async getSprinklerStatus() {
+        const response = await fetch(`${API_BASE_URL}/api/sprinkler/status`);
+        if (!response.ok) throw new Error("Failed to fetch Sprinkler status");
+        return response.json();
+    },
+
+    /**
+     * Start automatic face watching worker
+     */
+    async startFaceWatch() {
+        const response = await fetch(`${API_BASE_URL}/api/faces/watch/start`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error("Failed to start face watch worker");
+        return response.json();
+    },
+
+    /**
+     * Stop automatic face watching worker
+     */
+    async stopFaceWatch() {
+        const response = await fetch(`${API_BASE_URL}/api/faces/watch/stop`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error("Failed to stop face watch worker");
+        return response.json();
+    },
+
+    /**
+     * Get automatic face watching worker status
+     */
+    async getFaceWatchStatus() {
+        const response = await fetch(`${API_BASE_URL}/api/faces/watch/status`);
+        if (!response.ok) throw new Error("Failed to fetch face watch status");
+        return response.json();
+    },
+
+    /**
+     * Get notifications logs
+     */
+    async getNotifications() {
+        const response = await fetch(`${API_BASE_URL}/api/notifications`);
+        if (!response.ok) throw new Error("Failed to fetch notifications");
+        return response.json();
+    },
+
+    /**
+     * Get unread notifications count
+     */
+    async getUnreadNotificationCount() {
+        const response = await fetch(`${API_BASE_URL}/api/notifications/unread-count`);
+        if (!response.ok) throw new Error("Failed to fetch unread notification count");
+        return response.json();
+    },
+
+    /**
+     * Mark a specific notification as read
+     */
+    async markNotificationAsRead(eventId) {
+        const response = await fetch(`${API_BASE_URL}/api/notifications/${eventId}/read`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error("Failed to mark notification as read");
+        return response.json();
     }
 };

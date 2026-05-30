@@ -26,12 +26,92 @@ export const SystemProvider = ({ children }) => {
     const [aiFireDetected, setAiFireDetected] = useState(false);
     const [aiSmokeDetected, setAiSmokeDetected] = useState(false);
     const [aiConfidence, setAiConfidence] = useState(0.0);
+    const [aiBbox, setAiBbox] = useState(null);
     
     // Event Logs / Alerts
     const [events, setEvents] = useState([]);
     
     // Auto Scan PTZ state
     const [autoScanActive, setAutoScanActive] = useState(false);
+
+    // Notifications state
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    // Face watcher state
+    const [faceWatchActive, setFaceWatchActive] = useState(false);
+
+    // MQTT connection state
+    const [mqttConnected, setMqttConnected] = useState(false);
+
+    // Fetch notifications
+    const fetchNotifications = useCallback(async () => {
+        try {
+            const res = await api.getNotifications();
+            if (res && res.success) {
+                setNotifications(res.data);
+            }
+            const countRes = await api.getUnreadNotificationCount();
+            if (countRes && countRes.success) {
+                setUnreadCount(countRes.unread);
+            }
+        } catch (err) {
+            console.error("Failed to fetch notifications:", err);
+        }
+    }, []);
+
+    // Mark notification as read
+    const markAsRead = useCallback(async (eventId) => {
+        try {
+            const res = await api.markNotificationAsRead(eventId);
+            if (res && res.success) {
+                fetchNotifications();
+            }
+        } catch (err) {
+            console.error(`Failed to mark notification ${eventId} as read:`, err);
+        }
+    }, [fetchNotifications]);
+
+    // Face watcher actions
+    const toggleFaceWatch = useCallback(async () => {
+        try {
+            if (faceWatchActive) {
+                const res = await api.stopFaceWatch();
+                if (res && res.success) {
+                    setFaceWatchActive(false);
+                }
+            } else {
+                const res = await api.startFaceWatch();
+                if (res && res.success) {
+                    setFaceWatchActive(true);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to toggle face watch worker:", err);
+        }
+    }, [faceWatchActive]);
+
+    const checkFaceWatchStatus = useCallback(async () => {
+        try {
+            const res = await api.getFaceWatchStatus();
+            if (res && 'running' in res) {
+                setFaceWatchActive(res.running);
+            }
+        } catch (err) {
+            console.error("Failed to get face watch status:", err);
+        }
+    }, []);
+
+    const fetchMQTTStatus = useCallback(async () => {
+        try {
+            const res = await api.getMQTTStatus();
+            if (res && 'connected' in res) {
+                setMqttConnected(res.connected);
+            }
+        } catch (err) {
+            console.error("Failed to get MQTT status:", err);
+        }
+    }, []);
 
     // Fetch Events list from SQLite
     const fetchEvents = useCallback(async () => {
@@ -118,6 +198,7 @@ export const SystemProvider = ({ children }) => {
                 setAiFireDetected(status.ai?.fireDetected || false);
                 setAiSmokeDetected(status.ai?.smokeDetected || false);
                 setAiConfidence(status.ai?.confidence || 0.0);
+                setAiBbox(status.ai?.bbox || null);
 
                 // NPU details (Simulate fluctuations on standby/load)
                 const isUnderLoad = status.overallAlertLevel !== "safe";
@@ -130,11 +211,20 @@ export const SystemProvider = ({ children }) => {
                 setNpuLoad(localNpuLoad + (Math.random() - 0.5) * 2);
                 setSystemTemp(localTemp + (Math.random() - 0.5) * 0.3);
 
+                // Fetch real-time statuses
+                fetchNotifications();
+                checkFaceWatchStatus();
+                fetchMQTTStatus();
+
             } catch (err) {
                 // Offline Simulated Mode Fallback
                 if (!isMounted) return;
                 setIsBackendConnected(false);
                 setIsCameraOnline(true); // Simulate Dahua as online for rendering
+                setMqttConnected(false);
+                setFaceWatchActive(false);
+                setUnreadCount(0);
+                setAiBbox(null);
                 
                 // Fluctuating Simulated Telemetry
                 setNpuLoad(prev => {
@@ -161,7 +251,7 @@ export const SystemProvider = ({ children }) => {
             isMounted = false;
             clearInterval(interval);
         };
-    }, [overallAlertLevel]);
+    }, [overallAlertLevel, fetchNotifications, checkFaceWatchStatus, fetchMQTTStatus]);
 
     // Poll Event logs periodically
     useEffect(() => {
@@ -210,12 +300,21 @@ export const SystemProvider = ({ children }) => {
             aiFireDetected,
             aiSmokeDetected,
             aiConfidence,
+            aiBbox,
             events,
             fetchEvents,
             toggleSprinkler,
             triggerEmergencyStop,
             autoScanActive,
-            setAutoScanActive
+            setAutoScanActive,
+            notifications,
+            unreadCount,
+            fetchNotifications,
+            markAsRead,
+            faceWatchActive,
+            toggleFaceWatch,
+            mqttConnected,
+            fetchMQTTStatus
         }}>
             {children}
         </SystemContext.Provider>

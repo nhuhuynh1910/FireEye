@@ -2,11 +2,16 @@ import sqlite3
 import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta
 
 DB_DIR = Path("data")
 DB_PATH = DB_DIR / "fireeye.db"
 
 DB_DIR.mkdir(exist_ok=True)
+
+
+def get_now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def get_connection():
@@ -19,7 +24,6 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # AI events
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,29 +33,28 @@ def init_db():
             confidence REAL,
             message TEXT,
             snapshot_path TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            is_read INTEGER DEFAULT 0,
+            created_at TEXT
         )
     """)
 
-    # Known people
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS people (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             role TEXT,
             avatar_path TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT
         )
     """)
 
-    # Face embeddings
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS face_embeddings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             person_id INTEGER NOT NULL,
             embedding TEXT NOT NULL,
             image_path TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT,
             FOREIGN KEY (person_id) REFERENCES people(id)
         )
     """)
@@ -78,16 +81,20 @@ def insert_event(
             risk_level,
             confidence,
             message,
-            snapshot_path
+            snapshot_path,
+            is_read,
+            created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         event_type,
         source,
         risk_level,
         confidence,
         message,
-        snapshot_path
+        snapshot_path,
+        0,
+        get_now()
     ))
 
     conn.commit()
@@ -126,13 +133,15 @@ def insert_person(
         INSERT INTO people (
             name,
             role,
-            avatar_path
+            avatar_path,
+            created_at
         )
-        VALUES (?, ?, ?)
+        VALUES (?, ?, ?, ?)
     """, (
         name,
         role,
-        avatar_path
+        avatar_path,
+        get_now()
     ))
 
     conn.commit()
@@ -158,13 +167,15 @@ def insert_face_embedding(
         INSERT INTO face_embeddings (
             person_id,
             embedding,
-            image_path
+            image_path,
+            created_at
         )
-        VALUES (?, ?, ?)
+        VALUES (?, ?, ?, ?)
     """, (
         person_id,
         embedding_json,
-        image_path
+        image_path,
+        get_now()
     ))
 
     conn.commit()
@@ -213,3 +224,73 @@ def get_people():
     conn.close()
 
     return [dict(row) for row in rows]
+
+
+def get_notifications(limit: int = 20):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT *
+        FROM events
+        ORDER BY id DESC
+        LIMIT ?
+    """, (limit,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+def get_unread_notification_count():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT COUNT(*) as total
+        FROM events
+        WHERE is_read = 0
+    """)
+
+    row = cursor.fetchone()
+    conn.close()
+
+    return row["total"]
+
+
+def mark_notification_as_read(event_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE events
+        SET is_read = 1
+        WHERE id = ?
+    """, (event_id,))
+
+    conn.commit()
+    conn.close()
+
+    return True
+
+
+def cleanup_old_events(days: int = 7):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cutoff = (
+        datetime.now() - timedelta(days=days)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor.execute("""
+        DELETE FROM events
+        WHERE created_at < ?
+    """, (cutoff,))
+
+    deleted_count = cursor.rowcount
+
+    conn.commit()
+    conn.close()
+
+    return deleted_count

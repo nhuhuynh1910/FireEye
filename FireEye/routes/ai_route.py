@@ -19,6 +19,7 @@ class AiDetectRequest(BaseModel):
     smoke: bool = False
     human: bool = False
     confidence: float = 0.0
+    bbox: list[int] | None = None
 
 
 def calculate_risk_level(fire: bool, smoke: bool, human: bool) -> str:
@@ -50,7 +51,8 @@ def ai_detect(data: AiDetectRequest):
     result = update_ai_detection(
         fire_detected=data.fire,
         smoke_detected=data.smoke,
-        confidence=data.confidence
+        confidence=data.confidence,
+        bbox=data.bbox
     )
 
     danger = data.fire or data.smoke

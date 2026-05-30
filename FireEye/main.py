@@ -12,8 +12,11 @@ from routes.ptz_routes import router as ptz_router
 from routes.mqtt_route import router as mqtt_router
 from routes.event_route import router as event_router
 from routes.face_route import router as face_router
+from routes.notification_route import router as notification_router
+
 from services.mqtt_service import mqtt_service
 from services.db_service import init_db
+from services.cleanup_service import start_cleanup_worker
 
 app = FastAPI(
     title="FireEye Backend",
@@ -29,10 +32,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# static snapshot folder
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# routes
 app.include_router(status_router)
 app.include_router(camera_router)
 app.include_router(sensor_router)
@@ -41,11 +42,14 @@ app.include_router(ptz_router)
 app.include_router(mqtt_router)
 app.include_router(event_router)
 app.include_router(face_router)
+app.include_router(notification_router)
+
 
 @app.on_event("startup")
 def startup_event():
     init_db()
     mqtt_service.start()
+    start_cleanup_worker()
 
 
 @app.on_event("shutdown")
@@ -71,9 +75,19 @@ def home():
             "/api/ai/detect",
             "/api/mqtt/status",
             "/api/events",
-"/api/faces/register",
-"/api/faces/match",
-"/api/faces/people",
+
+            "/api/notifications",
+            "/api/notifications/unread-count",
+            "/api/notifications/{event_id}/read",
+
+            "/api/faces/register",
+            "/api/faces/match",
+            "/api/faces/match-camera",
+            "/api/faces/watch/start",
+            "/api/faces/watch/stop",
+            "/api/faces/watch/status",
+            "/api/faces/people",
+
             "/api/camera/left",
             "/api/camera/right",
             "/api/camera/up",
@@ -85,6 +99,8 @@ def home():
             "/static/snapshots/{filename}"
         ]
     }
+
+
 if __name__ == "__main__":
     import uvicorn
 

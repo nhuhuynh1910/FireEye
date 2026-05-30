@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import { useSystem } from '../store/SystemContext';
 
 export const Settings = () => {
-    const { fetchEvents } = useSystem();
+    const { fetchEvents, mqttConnected } = useSystem();
 
     // IoT Sensor simulation states
     const [smokeValue, setSmokeValue] = useState(12);
@@ -20,6 +20,12 @@ export const Settings = () => {
     const [aiHuman, setAiHuman] = useState(false);
     const [aiConfidence, setAiConfidence] = useState(0.85);
     const [isTriggeringAI, setIsTriggeringAI] = useState(false);
+
+    // Bounding Box adjuster states
+    const [bboxX, setBboxX] = useState(408);
+    const [bboxY, setBboxY] = useState(218);
+    const [bboxW, setBboxW] = useState(180);
+    const [bboxH, setBboxH] = useState(170);
 
     const handleUpdateSensors = async (e) => {
         e.preventDefault();
@@ -46,11 +52,13 @@ export const Settings = () => {
         e.preventDefault();
         setIsTriggeringAI(true);
         try {
+            const hasDetect = aiFire || aiSmoke || aiHuman;
             const res = await api.triggerAIDetect({
                 fire: aiFire,
                 smoke: aiSmoke,
                 human: aiHuman,
-                confidence: parseFloat(aiConfidence)
+                confidence: parseFloat(aiConfidence),
+                bbox: hasDetect ? [bboxX, bboxY, bboxX + bboxW, bboxY + bboxH] : null
             });
             alert(`AI Analysis trigger: ${res.risk_level} state registered.`);
             fetchEvents();
@@ -77,7 +85,8 @@ export const Settings = () => {
                 fire: false,
                 smoke: false,
                 human: false,
-                confidence: 0.0
+                confidence: 0.0,
+                bbox: null
             });
             // Reset local states
             setSmokeValue(12);
@@ -88,6 +97,10 @@ export const Settings = () => {
             setAiSmoke(false);
             setAiHuman(false);
             setAiConfidence(0.0);
+            setBboxX(408);
+            setBboxY(218);
+            setBboxW(180);
+            setBboxH(170);
             alert("All simulated inputs set back to SAFE states.");
             fetchEvents();
         } catch (err) {
@@ -246,6 +259,64 @@ export const Settings = () => {
                         />
                     </div>
 
+                    <div style={{ marginTop: '20px', borderTop: '1px dashed var(--border-color)', paddingTop: '16px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--accent-cyan)', letterSpacing: '0.5px' }}>TARGET BOUNDING BOX ADJUSTER (960x540 Frame)</span>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                            <div className="setting-slider-item" style={{ margin: 0 }}>
+                                <div className="setting-slider-header">
+                                    <span>LEFT (X)</span>
+                                    <span className="val" style={{ fontFamily: 'monospace' }}>{bboxX}px</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="960"
+                                    value={bboxX}
+                                    onChange={(e) => setBboxX(parseInt(e.target.value))}
+                                />
+                            </div>
+                            <div className="setting-slider-item" style={{ margin: 0 }}>
+                                <div className="setting-slider-header">
+                                    <span>TOP (Y)</span>
+                                    <span className="val" style={{ fontFamily: 'monospace' }}>{bboxY}px</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="540"
+                                    value={bboxY}
+                                    onChange={(e) => setBboxY(parseInt(e.target.value))}
+                                />
+                            </div>
+                            <div className="setting-slider-item" style={{ margin: 0 }}>
+                                <div className="setting-slider-header">
+                                    <span>WIDTH</span>
+                                    <span className="val" style={{ fontFamily: 'monospace' }}>{bboxW}px</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="20"
+                                    max="500"
+                                    value={bboxW}
+                                    onChange={(e) => setBboxW(parseInt(e.target.value))}
+                                />
+                            </div>
+                            <div className="setting-slider-item" style={{ margin: 0 }}>
+                                <div className="setting-slider-header">
+                                    <span>HEIGHT</span>
+                                    <span className="val" style={{ fontFamily: 'monospace' }}>{bboxH}px</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="20"
+                                    max="500"
+                                    value={bboxH}
+                                    onChange={(e) => setBboxH(parseInt(e.target.value))}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
                     <button
                         type="submit"
                         className="btn-tech-action primary"
@@ -263,6 +334,32 @@ export const Settings = () => {
                 >
                     RESET SECURITY SHIELD (SAFE STATE)
                 </button>
+            </div>
+
+            {/* MQTT Health state card */}
+            <div className="settings-card">
+                <h3 className="face-db-title">MQTT BROKER CONNECTION HEALTH</h3>
+                <div className="mqtt-health-status-container" style={{ marginTop: '15px' }}>
+                    <div className="mqtt-status-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <span className="mqtt-status-label" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Broker Link Status:</span>
+                        <span className={`mqtt-status-value-badge ${mqttConnected ? 'online' : 'offline'}`} style={{
+                            padding: '4px 10px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            fontFamily: 'monospace',
+                            backgroundColor: mqttConnected ? 'rgba(0, 240, 255, 0.1)' : 'rgba(255, 59, 48, 0.1)',
+                            border: `1px solid ${mqttConnected ? 'var(--accent-cyan)' : 'var(--accent-red)'}`,
+                            color: mqttConnected ? 'var(--accent-cyan)' : 'var(--accent-red)'
+                        }}>
+                            {mqttConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                        </span>
+                    </div>
+                    <p className="mqtt-health-desc" style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                        The broker listens to sprinkler actions and relays sensor warnings to industrial alarms. 
+                        Check backend configuration settings for MQTT daemon server configuration.
+                    </p>
+                </div>
             </div>
         </div>
     );

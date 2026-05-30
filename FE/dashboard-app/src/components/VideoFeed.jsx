@@ -12,18 +12,34 @@ export const VideoFeed = () => {
         aiSmokeDetected,
         aiConfidence,
         smokeDetected,
-        flameDetected
+        flameDetected,
+        aiBbox
     } = useSystem();
 
     const isAlerting = overallAlertLevel !== "safe" || aiFireDetected || aiSmokeDetected || flameDetected || smokeDetected;
 
-    const bboxStyle = isAlerting ? {
-        top: 'calc(320px - 85px)',
-        left: 'calc(520px - 90px)',
-        width: '180px',
-        height: '170px',
-        display: 'block'
-    } : { display: 'none' };
+    let bboxStyle = { display: 'none' };
+    if (isAlerting) {
+        if (aiBbox && aiBbox.length === 4) {
+            const [x1, y1, x2, y2] = aiBbox;
+            bboxStyle = {
+                left: `${(x1 / 9.6).toFixed(1)}%`,
+                top: `${(y1 / 5.4).toFixed(1)}%`,
+                width: `${((x2 - x1) / 9.6).toFixed(1)}%`,
+                height: `${((y2 - y1) / 5.4).toFixed(1)}%`,
+                display: 'block'
+            };
+        } else {
+            // Default simulated fallback bounding box coordinates
+            bboxStyle = {
+                left: '42.5%',
+                top: '40.5%',
+                width: '18.7%',
+                height: '31.5%',
+                display: 'block'
+            };
+        }
+    }
 
     const showLive = isBackendConnected && isCameraOnline;
 
@@ -73,13 +89,6 @@ export const VideoFeed = () => {
                                 <div className="hud-crosshair-circle"></div>
                             </div>
 
-                            {/* AI Bounding Box (Targets fire location) */}
-                            <div className="hud-target-box" style={bboxStyle}>
-                                <div className="hud-target-label">
-                                    <span className="hud-alert-pulse"></span>
-                                    {aiFireDetected || flameDetected ? 'YOLOv8: FIRE' : 'YOLOv8: SMOKE'} {(aiConfidence * 100 || 94.2).toFixed(1)}%
-                                </div>
-                            </div>
                         </div>
                     </>
                 ) : (

@@ -12,6 +12,8 @@ from services.db_service import (
     get_people
 )
 
+from services.snapshot_service import capture_snapshot
+
 FACE_DIR = Path("static/faces")
 FACE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -51,7 +53,6 @@ def register_face_from_image(
     face = faces[0]
     embedding = face.embedding
 
-    # Sử dụng UUID để đặt tên file avatar an toàn tránh Path Traversal
     avatar_name = f"{uuid.uuid4().hex}.jpg"
     avatar_path = FACE_DIR / avatar_name
 
@@ -154,11 +155,6 @@ def match_face_from_image(
     }
 
 
-def list_people():
-    return get_people()
-from services.snapshot_service import capture_snapshot
-
-
 def match_face_from_dahua():
     snapshot_path = capture_snapshot("face")
 
@@ -175,3 +171,7 @@ def match_face_from_dahua():
     result["snapshot"] = snapshot_path
 
     return result
+
+
+def list_people():
+    return get_people()
