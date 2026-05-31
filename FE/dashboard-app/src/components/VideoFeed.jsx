@@ -22,11 +22,16 @@ export const VideoFeed = () => {
     if (isAlerting) {
         if (aiBbox && aiBbox.length === 4) {
             const [x1, y1, x2, y2] = aiBbox;
+            // Detect if coordinates are in 1080p space or 540p space and scale to percent
+            const is1080p = x2 > 960 || y2 > 540;
+            const scaleX = is1080p ? 19.2 : 9.6;
+            const scaleY = is1080p ? 10.8 : 5.4;
+            
             bboxStyle = {
-                left: `${(x1 / 9.6).toFixed(1)}%`,
-                top: `${(y1 / 5.4).toFixed(1)}%`,
-                width: `${((x2 - x1) / 9.6).toFixed(1)}%`,
-                height: `${((y2 - y1) / 5.4).toFixed(1)}%`,
+                left: `${(x1 / scaleX).toFixed(1)}%`,
+                top: `${(y1 / scaleY).toFixed(1)}%`,
+                width: `${((x2 - x1) / scaleX).toFixed(1)}%`,
+                height: `${((y2 - y1) / scaleY).toFixed(1)}%`,
                 display: 'block'
             };
         } else {
@@ -57,6 +62,16 @@ export const VideoFeed = () => {
                                 console.error("Camera stream load error");
                             }}
                         />
+
+                        {/* YOLOv8 CLIENT-SIDE BOUNDING BOX */}
+                        {isAlerting && (
+                            <div className="hud-target-box" style={bboxStyle}>
+                                <div className="hud-target-label">
+                                    <span className="hud-alert-pulse"></span>
+                                    {aiFireDetected ? 'FIRE' : aiSmokeDetected ? 'SMOKE' : 'HUMAN'} {Math.round(aiConfidence * 100)}%
+                                </div>
+                            </div>
+                        )}
 
                         {/* YOLOv8 VISION HUD OVERLAY */}
                         <div className="yolov8-hud-overlay">

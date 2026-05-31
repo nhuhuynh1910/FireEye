@@ -51,6 +51,7 @@ def ai_detect(data: AiDetectRequest):
     result = update_ai_detection(
         fire_detected=data.fire,
         smoke_detected=data.smoke,
+        human_detected=data.human,
         confidence=data.confidence,
         bbox=data.bbox
     )

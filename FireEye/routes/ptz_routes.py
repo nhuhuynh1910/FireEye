@@ -49,4 +49,30 @@ def camera_zoom_out():
 @router.post("/api/camera/stop")
 def camera_stop(data: StopRequest):
     ok = camera_service.stop(data.code)
-    return {"success": ok, "action": "stop", "code": data.code}
+    return {
+        "success": ok,
+        "action": "stop",
+        "code": data.code
+    }
+
+
+@router.post("/api/camera/zone/{zone_id}")
+def camera_zone(zone_id: int):
+    return camera_service.goto_zone(zone_id)
+
+
+@router.post("/api/camera/home")
+def camera_home():
+    return camera_service.go_home()
+
+@router.get("/api/camera/zones")
+def get_camera_zones():
+    return {
+        "success": True,
+        "zones": {
+            1: {"name": "Zone 1", "angle": -45},
+            2: {"name": "Zone 2", "angle": 45},
+            3: {"name": "Zone 3", "angle": -135},
+            4: {"name": "Zone 4", "angle": 135}
+        }
+    }

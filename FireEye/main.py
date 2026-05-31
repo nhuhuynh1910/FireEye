@@ -67,12 +67,26 @@ def home():
         "mqtt": "enabled",
         "apis": [
             "/api/status",
+
             "/api/camera/status",
             "/api/camera/stream",
+            "/api/camera/left",
+            "/api/camera/right",
+            "/api/camera/up",
+            "/api/camera/down",
+            "/api/camera/zoom-in",
+            "/api/camera/zoom-out",
+            "/api/camera/stop",
+            "/api/camera/zone/{zone_id}",
+            "/api/camera/home",
+            "/api/camera/zones",
+
             "/api/sensors",
             "/api/sensors/update",
+
             "/api/ai/status",
             "/api/ai/detect",
+
             "/api/mqtt/status",
             "/api/events",
 
@@ -87,14 +101,6 @@ def home():
             "/api/faces/watch/stop",
             "/api/faces/watch/status",
             "/api/faces/people",
-
-            "/api/camera/left",
-            "/api/camera/right",
-            "/api/camera/up",
-            "/api/camera/down",
-            "/api/camera/zoom-in",
-            "/api/camera/zoom-out",
-            "/api/camera/stop",
 
             "/static/snapshots/{filename}"
         ]

@@ -10,7 +10,8 @@ from hailo_platform import (
     HailoStreamInterface,
     InferVStreams,
     InputVStreamParams,
-    OutputVStreamParams
+    OutputVStreamParams,
+    FormatType
 )
 
 # =========================================
@@ -55,8 +56,28 @@ HUMAN_THRESHOLD = 0.10
 LOOP_DELAY = 2
 
 # =========================================
-# SCORE LOGIC
+# UTILS & DECODING LOGIC
 # =========================================
+
+def softmax(x):
+    e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
+    return e_x / e_x.sum(axis=-1, keepdims=True)
+
+
+def generate_anchors():
+    anchors = []
+    strides = [8, 16, 32]
+    grid_sizes = [40, 20, 10]
+    
+    for stride, grid_size in zip(strides, grid_sizes):
+        for y in range(grid_size):
+            for x in range(grid_size):
+                # anchor center in 320x320 coordinates
+                anchor_x = (x + 0.5) * stride
+                anchor_y = (y + 0.5) * stride
+                anchors.append((anchor_x, anchor_y, stride))
+    return anchors
+
 
 def get_scores(det):
 
@@ -64,7 +85,7 @@ def get_scores(det):
 
     for i, name in enumerate(CLASSES):
 
-        class_values = det[:, i].astype(np.float32) / 100.0
+        class_values = det[:, i].astype(np.float32)
 
         max_score = float(np.max(class_values))
 
@@ -100,12 +121,18 @@ def main():
 
     network_group_params = network_group.create_params()
 
+    anchors = generate_anchors()
+
     input_vstreams_params = InputVStreamParams.make_from_network_group(
-        network_group
+        network_group,
+        quantized=True,
+        format_type=FormatType.UINT8
     )
 
     output_vstreams_params = OutputVStreamParams.make_from_network_group(
-        network_group
+        network_group,
+        quantized=False,
+        format_type=FormatType.FLOAT32
     )
 
     print("Opening camera...")
@@ -159,6 +186,7 @@ def main():
                 })
 
                 det = results["yolov8n/activation1"][0, 0]
+                boxes_raw = results["yolov8n/concat14"][0, 0]
 
                 class_scores = get_scores(det)
 
@@ -189,27 +217,76 @@ def main():
                     human_conf >= HUMAN_THRESHOLD
                 )
 
+                target_class_idx = -1
                 if fire_detected:
                     class_name = "fire_group"
                     confidence = fire_conf
+                    fire_map = {
+                        "fire": 1,
+                        "kitchen_fire": 3,
+                        "lighter_fire": 4
+                    }
+                    best_fire_class = max(FIRE_CLASSES, key=lambda c: class_scores.get(c, 0.0))
+                    target_class_idx = fire_map[best_fire_class]
 
                 elif smoke_detected:
                     class_name = "smoke"
                     confidence = smoke_conf
+                    target_class_idx = 5
 
                 elif human_detected:
                     class_name = "human"
                     confidence = human_conf
+                    target_class_idx = 2
 
                 else:
                     class_name = "safe"
                     confidence = 0.0
 
+                bbox = None
+                if target_class_idx != -1:
+                    # Find the anchor with the highest score for this class
+                    scores_for_class = det[:, target_class_idx]
+                    best_anchor_idx = int(np.argmax(scores_for_class))
+
+                    # Decode bounding box for best_anchor_idx
+                    anchor_x, anchor_y, stride = anchors[best_anchor_idx]
+                    bbox_dist = []
+                    for side in range(4):
+                        logits = boxes_raw[best_anchor_idx, side*16 : (side+1)*16]
+                        probs = softmax(logits)
+                        expected_dist = sum(p * i for i, p in enumerate(probs))
+                        bbox_dist.append(expected_dist * stride)
+
+                    # Tọa độ trên ảnh 320x320
+                    x1 = anchor_x - bbox_dist[0]
+                    y1 = anchor_y - bbox_dist[1]
+                    x2 = anchor_x + bbox_dist[2]
+                    y2 = anchor_y + bbox_dist[3]
+
+                    # Giới hạn trong khoảng [0.0, 320.0]
+                    x1 = max(0.0, min(320.0, x1))
+                    y1 = max(0.0, min(320.0, y1))
+                    x2 = max(0.0, min(320.0, x2))
+                    y2 = max(0.0, min(320.0, y2))
+
+                    # Quy đổi về kích thước camera gốc
+                    w_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1920
+                    h_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
+
+                    x1_orig = int(x1 * w_orig / 320.0)
+                    y1_orig = int(y1 * h_orig / 320.0)
+                    x2_orig = int(x2 * w_orig / 320.0)
+                    y2_orig = int(y2 * h_orig / 320.0)
+
+                    bbox = [x1_orig, y1_orig, x2_orig, y2_orig]
+
                 payload = {
                     "fire": fire_detected,
                     "smoke": smoke_detected,
                     "human": human_detected and not fire_detected,
-                    "confidence": round(confidence, 2)
+                    "confidence": round(confidence, 2),
+                    "bbox": bbox
                 }
 
                 print("=" * 50)
