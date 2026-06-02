@@ -40,3 +40,12 @@ ZONE_CONFIG = {
     4: {"name": "Zone 4", "pan_angle": 135, "tilt_angle": 0, "preset": 4}
 }
 
+# ==========================
+# MQTT ESP32 TOPIC CONFIG
+# ==========================
+
+ESP32_SENSOR_TOPIC_TO_ZONE = {
+    "esp32c3_1/sensor": 1
+}
+
+GAS_THRESHOLD_LOW = 600

@@ -13,7 +13,7 @@ from routes.mqtt_route import router as mqtt_router
 from routes.event_route import router as event_router
 from routes.face_route import router as face_router
 from routes.notification_route import router as notification_router
-
+from routes.sprinkler_route import router as sprinkler_router
 from services.mqtt_service import mqtt_service
 from services.db_service import init_db
 from services.cleanup_service import start_cleanup_worker
@@ -43,7 +43,7 @@ app.include_router(mqtt_router)
 app.include_router(event_router)
 app.include_router(face_router)
 app.include_router(notification_router)
-
+app.include_router(sprinkler_router)
 
 @app.on_event("startup")
 def startup_event():
@@ -103,6 +103,8 @@ def home():
             "/api/faces/people",
 
             "/static/snapshots/{filename}"
+            "/api/sprinkler/zone/{zone_id}/accept",
+"/api/sprinkler/zone/{zone_id}/reject",
         ]
     }
 

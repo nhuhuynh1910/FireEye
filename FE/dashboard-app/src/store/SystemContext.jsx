@@ -27,6 +27,7 @@ export const SystemProvider = ({ children }) => {
     const [aiSmokeDetected, setAiSmokeDetected] = useState(false);
     const [aiConfidence, setAiConfidence] = useState(0.0);
     const [aiBbox, setAiBbox] = useState(null);
+    const [hailoStatus, setHailoStatus] = useState("standby");
     
     // Event Logs / Alerts
     const [events, setEvents] = useState([]);
@@ -199,6 +200,7 @@ export const SystemProvider = ({ children }) => {
                 setAiSmokeDetected(status.ai?.smokeDetected || false);
                 setAiConfidence(status.ai?.confidence || 0.0);
                 setAiBbox(status.ai?.bbox || null);
+                setHailoStatus(status.aiAccelerator?.status || "standby");
 
                 // NPU details (Simulate fluctuations on standby/load)
                 const isUnderLoad = status.overallAlertLevel !== "safe";
@@ -225,6 +227,7 @@ export const SystemProvider = ({ children }) => {
                 setFaceWatchActive(false);
                 setUnreadCount(0);
                 setAiBbox(null);
+                setHailoStatus("offline");
                 
                 // Fluctuating Simulated Telemetry
                 setNpuLoad(prev => {
@@ -301,6 +304,7 @@ export const SystemProvider = ({ children }) => {
             aiSmokeDetected,
             aiConfidence,
             aiBbox,
+            hailoStatus,
             events,
             fetchEvents,
             toggleSprinkler,

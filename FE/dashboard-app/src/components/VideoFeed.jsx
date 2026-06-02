@@ -10,41 +10,12 @@ export const VideoFeed = () => {
         overallAlertLevel,
         aiFireDetected,
         aiSmokeDetected,
-        aiConfidence,
         smokeDetected,
         flameDetected,
-        aiBbox
+        hailoStatus
     } = useSystem();
 
     const isAlerting = overallAlertLevel !== "safe" || aiFireDetected || aiSmokeDetected || flameDetected || smokeDetected;
-
-    let bboxStyle = { display: 'none' };
-    if (isAlerting) {
-        if (aiBbox && aiBbox.length === 4) {
-            const [x1, y1, x2, y2] = aiBbox;
-            // Detect if coordinates are in 1080p space or 540p space and scale to percent
-            const is1080p = x2 > 960 || y2 > 540;
-            const scaleX = is1080p ? 19.2 : 9.6;
-            const scaleY = is1080p ? 10.8 : 5.4;
-            
-            bboxStyle = {
-                left: `${(x1 / scaleX).toFixed(1)}%`,
-                top: `${(y1 / scaleY).toFixed(1)}%`,
-                width: `${((x2 - x1) / scaleX).toFixed(1)}%`,
-                height: `${((y2 - y1) / scaleY).toFixed(1)}%`,
-                display: 'block'
-            };
-        } else {
-            // Default simulated fallback bounding box coordinates
-            bboxStyle = {
-                left: '42.5%',
-                top: '40.5%',
-                width: '18.7%',
-                height: '31.5%',
-                display: 'block'
-            };
-        }
-    }
 
     const showLive = isBackendConnected && isCameraOnline;
 
@@ -63,15 +34,7 @@ export const VideoFeed = () => {
                             }}
                         />
 
-                        {/* YOLOv8 CLIENT-SIDE BOUNDING BOX */}
-                        {isAlerting && (
-                            <div className="hud-target-box" style={bboxStyle}>
-                                <div className="hud-target-label">
-                                    <span className="hud-alert-pulse"></span>
-                                    {aiFireDetected ? 'FIRE' : aiSmokeDetected ? 'SMOKE' : 'HUMAN'} {Math.round(aiConfidence * 100)}%
-                                </div>
-                            </div>
-                        )}
+
 
                         {/* YOLOv8 VISION HUD OVERLAY */}
                         <div className="yolov8-hud-overlay">
@@ -84,7 +47,7 @@ export const VideoFeed = () => {
                             {/* HUD Telemetry text */}
                             <div className="hud-telemetry-header">
                                 <div>DEV_CLASS: RASPBERRY_PI_5</div>
-                                <div>ACCEL: HAILO-8L (ACTIVE)</div>
+                                <div>ACCEL: HAILO-8L ({hailoStatus ? hailoStatus.toUpperCase() : "OFFLINE"})</div>
                                 <div className={isAlerting ? 'hud-telemetry-pulse' : ''}>
                                     {isAlerting ? 'ALERT STATE: TRIGGERED' : 'SYSTEM STATUS: SECURE'}
                                 </div>

@@ -65,7 +65,15 @@ class CameraService:
                 timeout=3
             )
 
-            return response.status_code == 200
+            print("PTZ URL:", url)
+            print("PTZ STATUS:", response.status_code)
+            print("PTZ RESPONSE:", response.text)
+
+            if response.status_code == 200:
+                result = response.text.strip()
+                return "OK" in result or "ok" in result.lower()
+
+            return False
 
         except Exception as e:
             print(f"Lỗi PTZ {code}: {e}")
@@ -73,11 +81,8 @@ class CameraService:
 
     def _move_for_seconds(self, code, duration=1.0, speed=4):
         start_ok = self._send_ptz_command("start", code, speed)
-
         time.sleep(duration)
-
         stop_ok = self._send_ptz_command("stop", code, 0)
-
         return start_ok and stop_ok
 
     def move_left(self, speed=4):
@@ -112,10 +117,37 @@ class CameraService:
         return self._send_ptz_command("stop", ptz_code, 0)
 
     def go_home(self):
+        results = []
+
+        ok1 = self._move_for_seconds(
+            code="Right",
+            duration=1.0,
+            speed=4
+        )
+
+        results.append({
+            "code": "Right",
+            "duration": 1.0,
+            "success": ok1
+        })
+
+        ok2 = self._move_for_seconds(
+            code="Down",
+            duration=0.5,
+            speed=4
+        )
+
+        results.append({
+            "code": "Down",
+            "duration": 0.5,
+            "success": ok2
+        })
+
         return {
-            "success": True,
+            "success": all(item["success"] for item in results),
             "action": "home_manual",
-            "message": "Home manual mode. Hero A1 chưa dùng preset ổn định."
+            "mode": "manual_timed_move",
+            "moves": results
         }
 
     def goto_zone(self, zone_id):

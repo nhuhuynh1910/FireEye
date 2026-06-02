@@ -4,29 +4,18 @@ import numpy as np
 import requests
 
 from hailo_platform import (
-    HEF,
-    VDevice,
-    ConfigureParams,
-    HailoStreamInterface,
-    InferVStreams,
-    InputVStreamParams,
-    OutputVStreamParams,
-    FormatType
+    HEF, VDevice, ConfigureParams, HailoStreamInterface,
+    InferVStreams, InputVStreamParams, OutputVStreamParams, FormatType
 )
-
-# =========================================
-# CONFIG
-# =========================================
 
 HEF_PATH = "best.hef"
 
 RTSP_URL = (
-    "rtsp://admin:L2D710CD@192.168.1.108:554/"
+    "rtsp://admin:L2D710CD@10.10.10.2:554/"
     "cam/realmonitor?channel=1&subtype=0"
 )
 
 API_URL = "http://localhost:8000/api/ai/detect"
-
 INPUT_NAME = "yolov8n/input_layer1"
 
 CLASSES = [
@@ -38,71 +27,172 @@ CLASSES = [
     "smoke"
 ]
 
-# BỎ cigarette_fire để giảm báo giả
-FIRE_CLASSES = [
-    "fire",
-    "kitchen_fire",
-    "lighter_fire"
-]
+FIRE_CLASSES = ["fire", "kitchen_fire", "lighter_fire"]
 
-# =========================================
-# THRESHOLD
-# =========================================
+FIRE_THRESHOLD = 0.70
+SMOKE_THRESHOLD = 0.60
+HUMAN_THRESHOLD = 0.75
 
-FIRE_THRESHOLD = 0.25
-SMOKE_THRESHOLD = 0.08
-HUMAN_THRESHOLD = 0.10
+FIRE_CONFIRM_FRAMES = 2
+SMOKE_CONFIRM_FRAMES = 2
+HUMAN_CONFIRM_FRAMES = 3
 
-LOOP_DELAY = 2
+LOST_FRAMES_LIMIT = 1
+LOOP_DELAY = 0.03
+TOP_K_BOXES = 30
 
-# =========================================
-# UTILS & DECODING LOGIC
-# =========================================
 
 def softmax(x):
     e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
     return e_x / e_x.sum(axis=-1, keepdims=True)
 
 
+def is_camera_blocked(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    brightness = np.mean(gray)
+    contrast = np.std(gray)
+
+    edges = cv2.Canny(gray, 50, 150)
+    edge_ratio = np.count_nonzero(edges) / edges.size
+
+    return brightness < 35 or contrast < 18 or edge_ratio < 0.01
+
+
 def generate_anchors():
     anchors = []
     strides = [8, 16, 32]
     grid_sizes = [40, 20, 10]
-    
+
     for stride, grid_size in zip(strides, grid_sizes):
         for y in range(grid_size):
             for x in range(grid_size):
-                # anchor center in 320x320 coordinates
-                anchor_x = (x + 0.5) * stride
-                anchor_y = (y + 0.5) * stride
-                anchors.append((anchor_x, anchor_y, stride))
+                anchors.append(((x + 0.5) * stride, (y + 0.5) * stride, stride))
+
     return anchors
 
 
 def get_scores(det):
-
     scores = {}
-
     for i, name in enumerate(CLASSES):
-
-        class_values = det[:, i].astype(np.float32)
-
-        max_score = float(np.max(class_values))
-
-        top_k = np.sort(class_values)[-5:]
-        top_score = float(np.mean(top_k))
-
-        scores[name] = max(max_score, top_score)
-
+        values = det[:, i].astype(np.float32)
+        scores[name] = float(np.max(values))
     return scores
 
 
-# =========================================
-# MAIN
-# =========================================
+def decode_bbox(boxes_raw, anchors, anchor_idx):
+    anchor_x, anchor_y, stride = anchors[anchor_idx]
+    bbox_dist = []
+
+    for side in range(4):
+        logits = boxes_raw[anchor_idx, side * 16:(side + 1) * 16]
+        probs = softmax(logits)
+        expected_dist = sum(float(p) * i for i, p in enumerate(probs))
+        bbox_dist.append(expected_dist * stride)
+
+    x1 = max(0.0, min(320.0, anchor_x - bbox_dist[0]))
+    y1 = max(0.0, min(320.0, anchor_y - bbox_dist[1]))
+    x2 = max(0.0, min(320.0, anchor_x + bbox_dist[2]))
+    y2 = max(0.0, min(320.0, anchor_y + bbox_dist[3]))
+
+    return x1, y1, x2, y2
+
+
+def get_best_bbox(det, boxes_raw, anchors, target_class_idx, w_orig, h_orig):
+    scores_for_class = det[:, target_class_idx]
+    top_indices = np.argsort(scores_for_class)[-TOP_K_BOXES:][::-1]
+
+    best_box = None
+    best_score = -1
+
+    for idx in top_indices:
+        score = float(scores_for_class[idx])
+        x1, y1, x2, y2 = decode_bbox(boxes_raw, anchors, int(idx))
+
+        bw_320 = x2 - x1
+        bh_320 = y2 - y1
+
+        if bw_320 <= 2 or bh_320 <= 2:
+            continue
+
+        if score > best_score:
+            best_score = score
+            best_box = (x1, y1, x2, y2)
+
+    if best_box is None:
+        return None
+
+    x1, y1, x2, y2 = best_box
+
+    bbox = [
+        int(x1 * w_orig / 320.0),
+        int(y1 * h_orig / 320.0),
+        int(x2 * w_orig / 320.0),
+        int(y2 * h_orig / 320.0)
+    ]
+
+    bw = bbox[2] - bbox[0]
+    bh = bbox[3] - bbox[1]
+    area = bw * bh
+    frame_area = w_orig * h_orig
+
+    if bw <= 0 or bh <= 0:
+        return None
+
+    class_name = CLASSES[target_class_idx]
+
+    if class_name == "human":
+        # Chặn box human ma quá to
+        if bw > w_orig * 0.60:
+            return None
+
+        if bh > h_orig * 0.90:
+            return None
+
+        if area > frame_area * 0.45:
+            return None
+
+        # Chặn box quá nhỏ
+        if bw < w_orig * 0.04:
+            return None
+
+        if bh < h_orig * 0.10:
+            return None
+
+    return bbox
+
+
+def post_ai_result(payload):
+    try:
+        requests.post(API_URL, json=payload, timeout=0.3)
+        print("POST OK")
+    except Exception as e:
+        print("POST ERROR:", e)
+
+
+def make_payload(class_name, confidence, bbox):
+    return {
+        "fire": class_name in FIRE_CLASSES,
+        "smoke": class_name == "smoke",
+        "human": class_name == "human",
+        "confidence": round(confidence, 2),
+        "class_name": class_name,
+        "bbox": bbox,
+        "timestamp": time.time()
+    }
+
+
+def send_payload(class_name, confidence, bbox):
+    payload = make_payload(class_name, confidence, bbox)
+    print("=" * 50)
+    print("PAYLOAD:", payload)
+    post_ai_result(payload)
+
+
+def reset_all():
+    return "safe", None, 0.0, 0, 0, 0, 0
+
 
 def main():
-
     print("Loading HEF...")
     hef = HEF(HEF_PATH)
 
@@ -114,13 +204,8 @@ def main():
         interface=HailoStreamInterface.PCIe
     )
 
-    network_group = target.configure(
-        hef,
-        configure_params
-    )[0]
-
+    network_group = target.configure(hef, configure_params)[0]
     network_group_params = network_group.create_params()
-
     anchors = generate_anchors()
 
     input_vstreams_params = InputVStreamParams.make_from_network_group(
@@ -136,17 +221,23 @@ def main():
     )
 
     print("Opening camera...")
-
-    cap = cv2.VideoCapture(
-        RTSP_URL,
-        cv2.CAP_FFMPEG
-    )
+    cap = cv2.VideoCapture(RTSP_URL, cv2.CAP_FFMPEG)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():
         print("Cannot open camera")
         return
 
     print("Starting AI inference... Ctrl+C để dừng")
+
+    locked_class = "safe"
+    locked_bbox = None
+    locked_confidence = 0.0
+
+    lost_frames = 0
+    fire_confirm_count = 0
+    smoke_confirm_count = 0
+    human_confirm_count = 0
 
     with InferVStreams(
         network_group,
@@ -157,7 +248,7 @@ def main():
         with network_group.activate(network_group_params):
 
             while True:
-
+                cap.grab()
                 ret, frame = cap.read()
 
                 if not ret:
@@ -165,21 +256,25 @@ def main():
                     time.sleep(1)
                     continue
 
-                # BGR -> RGB
-                rgb = cv2.cvtColor(
-                    frame,
-                    cv2.COLOR_BGR2RGB
-                )
+                if is_camera_blocked(frame):
+                    locked_class = "safe"
+                    locked_bbox = None
+                    locked_confidence = 0.0
+                    lost_frames = 0
+                    fire_confirm_count = 0
+                    smoke_confirm_count = 0
+                    human_confirm_count = 0
 
-                resized = cv2.resize(
-                    rgb,
-                    (320, 320)
-                )
+                    print("CAMERA BLOCKED / LOW DETAIL")
+                    send_payload("safe", 0.0, None)
+                    time.sleep(LOOP_DELAY)
+                    continue
 
-                input_tensor = np.expand_dims(
-                    resized.astype(np.uint8),
-                    axis=0
-                )
+                h_orig, w_orig = frame.shape[:2]
+
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                resized = cv2.resize(rgb, (320, 320))
+                input_tensor = np.expand_dims(resized.astype(np.uint8), axis=0)
 
                 results = infer_pipeline.infer({
                     INPUT_NAME: input_tensor
@@ -190,131 +285,99 @@ def main():
 
                 class_scores = get_scores(det)
 
-                fire_conf = max(
-                    class_scores.get(c, 0.0)
-                    for c in FIRE_CLASSES
-                )
+                fire_conf = max(class_scores.get(c, 0.0) for c in FIRE_CLASSES)
+                smoke_conf = class_scores.get("smoke", 0.0)
+                human_conf = class_scores.get("human", 0.0)
 
-                smoke_conf = class_scores.get(
-                    "smoke",
-                    0.0
-                )
-
-                human_conf = class_scores.get(
-                    "human",
-                    0.0
-                )
-
-                fire_detected = (
-                    fire_conf >= FIRE_THRESHOLD
-                )
-
-                smoke_detected = (
-                    smoke_conf >= SMOKE_THRESHOLD
-                )
-
-                human_detected = (
-                    human_conf >= HUMAN_THRESHOLD
-                )
-
+                current_class = "safe"
+                confidence = 0.0
                 target_class_idx = -1
-                if fire_detected:
-                    class_name = "fire_group"
-                    confidence = fire_conf
-                    fire_map = {
-                        "fire": 1,
-                        "kitchen_fire": 3,
-                        "lighter_fire": 4
-                    }
-                    best_fire_class = max(FIRE_CLASSES, key=lambda c: class_scores.get(c, 0.0))
-                    target_class_idx = fire_map[best_fire_class]
 
-                elif smoke_detected:
-                    class_name = "smoke"
-                    confidence = smoke_conf
-                    target_class_idx = 5
+                if fire_conf >= FIRE_THRESHOLD:
+                    fire_confirm_count += 1
+                    smoke_confirm_count = 0
+                    human_confirm_count = 0
 
-                elif human_detected:
-                    class_name = "human"
-                    confidence = human_conf
-                    target_class_idx = 2
+                    if fire_confirm_count >= FIRE_CONFIRM_FRAMES:
+                        best_fire_class = max(
+                            FIRE_CLASSES,
+                            key=lambda c: class_scores.get(c, 0.0)
+                        )
+                        current_class = best_fire_class
+                        confidence = fire_conf
+                        target_class_idx = CLASSES.index(best_fire_class)
+
+                elif smoke_conf >= SMOKE_THRESHOLD:
+                    smoke_confirm_count += 1
+                    fire_confirm_count = 0
+                    human_confirm_count = 0
+
+                    if smoke_confirm_count >= SMOKE_CONFIRM_FRAMES:
+                        current_class = "smoke"
+                        confidence = smoke_conf
+                        target_class_idx = CLASSES.index("smoke")
+
+                elif human_conf >= HUMAN_THRESHOLD:
+                    human_confirm_count += 1
+                    fire_confirm_count = 0
+                    smoke_confirm_count = 0
+
+                    if human_confirm_count >= HUMAN_CONFIRM_FRAMES:
+                        current_class = "human"
+                        confidence = human_conf
+                        target_class_idx = CLASSES.index("human")
 
                 else:
-                    class_name = "safe"
-                    confidence = 0.0
+                    fire_confirm_count = 0
+                    smoke_confirm_count = 0
+                    human_confirm_count = 0
 
-                bbox = None
+                current_bbox = None
+
                 if target_class_idx != -1:
-                    # Find the anchor with the highest score for this class
-                    scores_for_class = det[:, target_class_idx]
-                    best_anchor_idx = int(np.argmax(scores_for_class))
+                    current_bbox = get_best_bbox(
+                        det,
+                        boxes_raw,
+                        anchors,
+                        target_class_idx,
+                        w_orig,
+                        h_orig
+                    )
 
-                    # Decode bounding box for best_anchor_idx
-                    anchor_x, anchor_y, stride = anchors[best_anchor_idx]
-                    bbox_dist = []
-                    for side in range(4):
-                        logits = boxes_raw[best_anchor_idx, side*16 : (side+1)*16]
-                        probs = softmax(logits)
-                        expected_dist = sum(p * i for i, p in enumerate(probs))
-                        bbox_dist.append(expected_dist * stride)
+                if current_class != "safe" and current_bbox is not None:
+                    locked_class = current_class
+                    locked_confidence = confidence
+                    locked_bbox = current_bbox
+                    lost_frames = 0
+                else:
+                    # Quan trọng: nếu human bị bbox filter loại thì reset confirm
+                    if current_class == "human":
+                        human_confirm_count = 0
 
-                    # Tọa độ trên ảnh 320x320
-                    x1 = anchor_x - bbox_dist[0]
-                    y1 = anchor_y - bbox_dist[1]
-                    x2 = anchor_x + bbox_dist[2]
-                    y2 = anchor_y + bbox_dist[3]
+                    lost_frames += 1
 
-                    # Giới hạn trong khoảng [0.0, 320.0]
-                    x1 = max(0.0, min(320.0, x1))
-                    y1 = max(0.0, min(320.0, y1))
-                    x2 = max(0.0, min(320.0, x2))
-                    y2 = max(0.0, min(320.0, y2))
-
-                    # Quy đổi về kích thước camera gốc
-                    w_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1920
-                    h_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
-
-                    x1_orig = int(x1 * w_orig / 320.0)
-                    y1_orig = int(y1 * h_orig / 320.0)
-                    x2_orig = int(x2 * w_orig / 320.0)
-                    y2_orig = int(y2 * h_orig / 320.0)
-
-                    bbox = [x1_orig, y1_orig, x2_orig, y2_orig]
-
-                payload = {
-                    "fire": fire_detected,
-                    "smoke": smoke_detected,
-                    "human": human_detected and not fire_detected,
-                    "confidence": round(confidence, 2),
-                    "bbox": bbox
-                }
+                    if lost_frames >= LOST_FRAMES_LIMIT:
+                        locked_class = "safe"
+                        locked_bbox = None
+                        locked_confidence = 0.0
+                        lost_frames = 0
 
                 print("=" * 50)
-                print("CLASS:", class_name)
+                print("CURRENT CLASS:", current_class)
+                print("LOCKED CLASS:", locked_class)
                 print("SCORES:", class_scores)
-                print("PAYLOAD:", payload)
+                print(
+                    "CONFIRM:",
+                    "fire", fire_confirm_count,
+                    "smoke", smoke_confirm_count,
+                    "human", human_confirm_count
+                )
 
-                if (
-                    fire_detected
-                    or smoke_detected
-                    or human_detected
-                ):
-
-                    try:
-
-                        requests.post(
-                            API_URL,
-                            json=payload,
-                            timeout=15
-                        )
-
-                        print("POST OK")
-
-                    except Exception as e:
-                        print("POST ERROR:", e)
-
-                else:
-                    print("SAFE - skip POST")
+                send_payload(
+                    locked_class,
+                    locked_confidence,
+                    locked_bbox
+                )
 
                 time.sleep(LOOP_DELAY)
 
