@@ -348,7 +348,7 @@ export const Settings = () => {
                             fontSize: '11px',
                             fontWeight: 'bold',
                             fontFamily: 'monospace',
-                            backgroundColor: mqttConnected ? 'rgba(0, 240, 255, 0.1)' : 'rgba(255, 59, 48, 0.1)',
+                            backgroundColor: mqttConnected ? 'rgba(255, 94, 54, 0.1)' : 'rgba(255, 59, 48, 0.1)',
                             border: `1px solid ${mqttConnected ? 'var(--accent-cyan)' : 'var(--accent-red)'}`,
                             color: mqttConnected ? 'var(--accent-cyan)' : 'var(--accent-red)'
                         }}>

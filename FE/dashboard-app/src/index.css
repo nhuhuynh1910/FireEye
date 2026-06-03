@@ -8,30 +8,30 @@
 }
 
 :root {
-    /* Color Palette */
-    --bg-deep: #f8fafc;         /* Light slate gray background */
-    --bg-panel: #ffffff;        /* Pure white panel background */
-    --bg-card: #f1f5f9;         /* Very light gray card background */
-    --bg-card-hover: #e2e8f0;   /* Hover state for cards */
+    /* Color Palette - Sleek Dark Mode synchronized with logo.jpg */
+    --bg-deep: #07080a;         /* Deep obsidian black */
+    --bg-panel: #0d0f14;        /* Dark panel background */
+    --bg-card: #141722;         /* Dark card background */
+    --bg-card-hover: #1b1e2c;   /* Hover state for dark cards */
     
-    --border-color: #cbd5e1;     /* Light gray border */
-    --border-active: #0ea5e9;    /* Sky blue active border */
+    --border-color: #222636;     /* Dark slate-gray border */
+    --border-active: #ff3b30;    /* Logo orange-red active border */
     
     /* Text Colors */
-    --text-primary: #0f172a;     /* Dark slate text */
-    --text-secondary: #475569;   /* Medium slate text */
-    --text-muted: #94a3b8;       /* Light muted text */
+    --text-primary: #f5f6f8;     /* Crisp off-white text */
+    --text-secondary: #9ca3af;   /* Medium slate text */
+    --text-muted: #6b7280;       /* Light muted text */
     
     /* State Colors */
-    --accent-cyan: #0ea5e9;      /* Safe state sky blue */
-    --accent-blue-logo: #2563eb; /* Logo bottom curve */
-    --accent-orange-logo: #f97316;/* Logo flame */
-    --accent-red: #ef4444;       /* Alert state red */
+    --accent-cyan: #ff5e36;      /* Synchronized Logo Orange-Red */
+    --accent-blue-logo: #ff3b30; /* Main logo red */
+    --accent-orange-logo: #f97316;/* Logo flame orange */
+    --accent-red: #d32f2f;       /* Alert state deep red */
     --accent-copper: #c87533;    /* Copper traces */
     
     /* Glow Effects */
-    --glow-cyan: 0 0 15px rgba(14, 165, 233, 0.25);
-    --glow-red: 0 0 15px rgba(239, 68, 68, 0.3);
+    --glow-cyan: 0 0 15px rgba(255, 94, 54, 0.4);
+    --glow-red: 0 0 15px rgba(211, 47, 47, 0.5);
     --glow-copper: 0 0 10px rgba(200, 117, 51, 0.15);
     
     --transition-speed: 0.25s;

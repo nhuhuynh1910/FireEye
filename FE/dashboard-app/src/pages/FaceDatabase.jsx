@@ -310,7 +310,7 @@ export const FaceDatabase = () => {
                             fontSize: '11px',
                             marginBottom: '10px',
                             fontFamily: 'monospace',
-                            backgroundColor: regStatus.success ? 'rgba(0, 240, 255, 0.1)' : 'rgba(255, 59, 48, 0.1)',
+                            backgroundColor: regStatus.success ? 'rgba(255, 94, 54, 0.1)' : 'rgba(255, 59, 48, 0.1)',
                             border: `1px solid ${regStatus.success ? 'var(--accent-cyan)' : 'var(--accent-red)'}`,
                             color: regStatus.success ? 'var(--accent-cyan)' : 'var(--accent-red)'
                         }}>

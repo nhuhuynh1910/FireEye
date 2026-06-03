@@ -37,7 +37,7 @@ export const useCanvasSim = (canvasRef, cameraName) => {
             
             objects = [
                 { type: "parked", x: 120, y: 150, color: "#757575" },
-                { type: "parked", x: 320, y: 150, color: "#00f0ff" },
+                { type: "parked", x: 320, y: 150, color: "#ff5e36" },
                 { type: "parked", x: 420, y: 150, color: "#e53935" },
                 { type: "patrol", x: 0, y: 260, speed: 1.5, color: "#43a047" }
             ];
@@ -125,7 +125,7 @@ export const useCanvasSim = (canvasRef, cameraName) => {
                 ctx.fillStyle = obj.color || "#ffffff";
                 if (obj.type === "car") {
                     ctx.fillRect(obj.x, obj.y, obj.size, obj.size * 0.5);
-                    ctx.fillStyle = "rgba(0, 240, 255, 0.6)";
+                    ctx.fillStyle = "rgba(255, 94, 54, 0.6)";
                     ctx.fillRect(obj.x + obj.size - 10, obj.y + 2, 8, 4);
                     
                     // AI Box
@@ -139,7 +139,7 @@ export const useCanvasSim = (canvasRef, cameraName) => {
                     ctx.fillRect(obj.x, obj.y, 35, 18);
                 } else if (obj.type === "patrol") {
                     ctx.fillRect(obj.x, obj.y, 40, 20);
-                    ctx.strokeStyle = "#00f0ff";
+                    ctx.strokeStyle = "#ff5e36";
                     ctx.lineWidth = 1;
                     ctx.strokeRect(obj.x - 2, obj.y - 2, 44, 24);
                 } else if (obj.type === "walker") {
@@ -147,10 +147,10 @@ export const useCanvasSim = (canvasRef, cameraName) => {
                     ctx.arc(obj.x, obj.y, obj.radius, 0, 2 * Math.PI);
                     ctx.fill();
                     
-                    ctx.strokeStyle = "#00f0ff";
+                    ctx.strokeStyle = "#ff5e36";
                     ctx.lineWidth = 1.5;
                     ctx.strokeRect(obj.x - obj.radius - 4, obj.y - obj.radius - 4, (obj.radius * 2) + 8, (obj.radius * 2) + 8);
-                    ctx.fillStyle = "#00f0ff";
+                    ctx.fillStyle = "#ff5e36";
                     ctx.font = "9px monospace";
                     ctx.fillText(`${obj.label}: 94%`, obj.x - obj.radius - 4, obj.y - obj.radius - 8);
                 } else if (obj.type === "shadow") {

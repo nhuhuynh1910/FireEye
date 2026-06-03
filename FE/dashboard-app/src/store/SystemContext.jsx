@@ -35,6 +35,9 @@ export const SystemProvider = ({ children }) => {
     // Auto Scan PTZ state
     const [autoScanActive, setAutoScanActive] = useState(false);
 
+    // PTZ panel visibility state
+    const [isPTZVisible, setIsPTZVisible] = useState(true);
+
     // Notifications state
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -263,26 +266,36 @@ export const SystemProvider = ({ children }) => {
         return () => clearInterval(interval);
     }, [fetchEvents]);
 
-    // Simulated scanning behavior
+    // Enhanced scanning behavior based on preset zones
     useEffect(() => {
         if (!autoScanActive) return;
         
-        let direction = 1;
+        const scanZones = [1, 2, 3, 4];
+        let currentZoneIndex = 0;
+        
         const scanSequence = async () => {
             if (isBackendConnected && isCameraOnline) {
                 try {
-                    const action = direction > 0 ? "right" : "left";
-                    await api.sendPTZCommand(action);
-                    setTimeout(() => api.sendPTZCommand("stop", { code: action }), 300);
+                    const zoneId = scanZones[currentZoneIndex];
+                    await api.moveToZone(zoneId);
+                    currentZoneIndex = (currentZoneIndex + 1) % scanZones.length;
                 } catch (err) {
-                    console.error("PTZ AutoScan command failed:", err);
+                    console.error("PTZ AutoScan zone transition failed:", err);
                 }
             }
-            direction = -direction;
         };
 
-        const interval = setInterval(scanSequence, 4000);
-        return () => clearInterval(interval);
+        // Run immediately on start, then repeat every 15 seconds
+        scanSequence();
+        const interval = setInterval(scanSequence, 15000);
+        
+        return () => {
+            clearInterval(interval);
+            // Return to home position when scanning stops
+            if (isBackendConnected && isCameraOnline) {
+                api.goHome().catch(err => console.error("Failed to return camera to home on disable:", err));
+            }
+        };
     }, [autoScanActive, isBackendConnected, isCameraOnline]);
 
     return (
@@ -311,6 +324,8 @@ export const SystemProvider = ({ children }) => {
             triggerEmergencyStop,
             autoScanActive,
             setAutoScanActive,
+            isPTZVisible,
+            setIsPTZVisible,
             notifications,
             unreadCount,
             fetchNotifications,

@@ -15,52 +15,26 @@ export const TelemetrySidebar = () => {
         sprinklerState,
         toggleSprinkler,
         autoScanActive,
-        setAutoScanActive,
-        isCameraOnline
+        setAutoScanActive
     } = useSystem();
 
     const isZone1Alerting = overallAlertLevel !== "safe" || aiFireDetected || aiSmokeDetected || flameDetected || smokeDetected;
 
-    const handlePTZStart = async (action) => {
-        if (!isCameraOnline) return;
-        try {
-            await api.sendPTZCommand(action);
-        } catch (err) {
-            console.error(`PTZ ${action} start error:`, err);
-        }
-    };
 
-    const handlePTZStop = async (action) => {
-        if (!isCameraOnline) return;
-        try {
-            await api.sendPTZCommand('stop', { code: action });
-        } catch (err) {
-            console.error("PTZ stop error:", err);
-        }
-    };
-
-    const handleHardStop = async () => {
-        if (!isCameraOnline) return;
-        try {
-            await api.sendPTZCommand('stop');
-        } catch (err) {
-            console.error("PTZ hard stop error:", err);
-        }
-    };
 
     return (
         <aside className="right-sidebar copper-texture">
-            {/* TOP MODULE: PTZ joystic & Scan */}
-            <div className="sidebar-module">
-                <div className="module-header">
-                    <h3 className="module-title">
+            {/* AUTO SCAN MODULE */}
+            <div className="sidebar-module" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+                <div className="module-header" style={{ marginBottom: 0 }}>
+                    <h3 className="module-title" style={{ color: 'var(--accent-cyan)' }}>
                         <span className="hex-icon-wrapper">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <circle cx="12" cy="12" r="10"/>
                                 <circle cx="12" cy="12" r="3"/>
                             </svg>
                         </span>
-                        PTZ CAM CONTROL
+                        CAMERA PATROL
                     </h3>
                     <div className="autoscan-container">
                         <span className="autoscan-label">Auto-Scan</span>
@@ -74,115 +48,10 @@ export const TelemetrySidebar = () => {
                         </label>
                     </div>
                 </div>
-
-                {/* Hexagonal PTZ Controls */}
-                <div className="ptz-joystick-grid">
-                    {/* Up */}
-                    <button
-                        className="ptz-hex-btn up"
-                        title="Pan Up"
-                        onMouseDown={() => handlePTZStart('up')}
-                        onMouseUp={() => handlePTZStop('up')}
-                        onMouseLeave={() => handlePTZStop('up')}
-                        onTouchStart={(e) => { e.preventDefault(); handlePTZStart('up'); }}
-                        onTouchEnd={(e) => { e.preventDefault(); handlePTZStop('up'); }}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                            <polyline points="18 15 12 9 6 15"/>
-                        </svg>
-                    </button>
-
-                    {/* Left */}
-                    <button
-                        className="ptz-hex-btn left"
-                        title="Pan Left"
-                        onMouseDown={() => handlePTZStart('left')}
-                        onMouseUp={() => handlePTZStop('left')}
-                        onMouseLeave={() => handlePTZStop('left')}
-                        onTouchStart={(e) => { e.preventDefault(); handlePTZStart('left'); }}
-                        onTouchEnd={(e) => { e.preventDefault(); handlePTZStop('left'); }}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                            <polyline points="15 18 9 12 15 6"/>
-                        </svg>
-                    </button>
-
-                    {/* Stop Core */}
-                    <button
-                        className="ptz-hex-btn center-stop"
-                        title="STOP MOVEMENT"
-                        onClick={handleHardStop}
-                    >
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                            <rect x="6" y="6" width="12" height="12" rx="1"/>
-                        </svg>
-                    </button>
-
-                    {/* Right */}
-                    <button
-                        className="ptz-hex-btn right"
-                        title="Pan Right"
-                        onMouseDown={() => handlePTZStart('right')}
-                        onMouseUp={() => handlePTZStop('right')}
-                        onMouseLeave={() => handlePTZStop('right')}
-                        onTouchStart={(e) => { e.preventDefault(); handlePTZStart('right'); }}
-                        onTouchEnd={(e) => { e.preventDefault(); handlePTZStop('right'); }}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                            <polyline points="9 18 15 12 9 6"/>
-                        </svg>
-                    </button>
-
-                    {/* Down */}
-                    <button
-                        className="ptz-hex-btn down"
-                        title="Pan Down"
-                        onMouseDown={() => handlePTZStart('down')}
-                        onMouseUp={() => handlePTZStop('down')}
-                        onMouseLeave={() => handlePTZStop('down')}
-                        onTouchStart={(e) => { e.preventDefault(); handlePTZStart('down'); }}
-                        onTouchEnd={(e) => { e.preventDefault(); handlePTZStop('down'); }}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                            <polyline points="6 9 12 15 18 9"/>
-                        </svg>
-                    </button>
-
-                    {/* Zoom In */}
-                    <button
-                        className="ptz-hex-btn zoom-in"
-                        title="Zoom In"
-                        onMouseDown={() => handlePTZStart('zoom-in')}
-                        onMouseUp={() => handlePTZStop('zoom-in')}
-                        onMouseLeave={() => handlePTZStop('zoom-in')}
-                        onTouchStart={(e) => { e.preventDefault(); handlePTZStart('zoom-in'); }}
-                        onTouchEnd={(e) => { e.preventDefault(); handlePTZStop('zoom-in'); }}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                            <line x1="12" y1="5" x2="12" y2="19"/>
-                            <line x1="5" y1="12" x2="19" y2="12"/>
-                        </svg>
-                    </button>
-
-                    {/* Zoom Out */}
-                    <button
-                        className="ptz-hex-btn zoom-out"
-                        title="Zoom Out"
-                        onMouseDown={() => handlePTZStart('zoom-out')}
-                        onMouseUp={() => handlePTZStop('zoom-out')}
-                        onMouseLeave={() => handlePTZStop('zoom-out')}
-                        onTouchStart={(e) => { e.preventDefault(); handlePTZStart('zoom-out'); }}
-                        onTouchEnd={(e) => { e.preventDefault(); handlePTZStop('zoom-out'); }}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                            <line x1="5" y1="12" x2="19" y2="12"/>
-                        </svg>
-                    </button>
-                </div>
             </div>
 
             {/* BOTTOM MODULE: Zone Control stack */}
-            <div className="sidebar-module grow">
+            <div className="sidebar-module grow" style={{ paddingTop: '16px' }}>
                 <div className="module-header">
                     <h3 className="module-title">
                         <span className="hex-icon-wrapper">

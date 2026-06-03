@@ -3,10 +3,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SystemProvider, useSystem } from './store/SystemContext';
 import { Navigation } from './navigation/Navigation';
 import { TelemetrySidebar } from './components/TelemetrySidebar';
+import logoImg from './assets/image-removebg-preview.jpg';
 import './App.css';
 
-const API_BASE_URL = typeof window !== 'undefined' 
-    ? `http://${window.location.hostname}:8000` 
+const API_BASE_URL = typeof window !== 'undefined'
+    ? `http://${window.location.hostname}:8000`
     : "http://127.0.0.1:8000";
 
 const MainLayout = () => {
@@ -42,63 +43,19 @@ const MainLayout = () => {
             <header className="top-navbar">
                 <div className="brand-section">
                     {/* Futuristic Hexagonal Fire-Eye Logo */}
-                    <svg className="logo-eye-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <defs>
-                            <linearGradient id="flameColor" x1="20" y1="0" x2="80" y2="60" gradientUnits="userSpaceOnUse">
-                                <stop offset="0%" stopColor="#ff3b30" />
-                                <stop offset="50%" stopColor="#f97316" />
-                                <stop offset="100%" stopColor="#fbbf24" />
-                            </linearGradient>
-                            <linearGradient id="liquidColor" x1="0" y1="50" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-                                <stop offset="0%" stopColor="#00f0ff" />
-                                <stop offset="100%" stopColor="#2563eb" />
-                            </linearGradient>
-                            <linearGradient id="copperColor" x1="10" y1="10" x2="90" y2="90" gradientUnits="userSpaceOnUse">
-                                <stop offset="0%" stopColor="#c87533" />
-                                <stop offset="100%" stopColor="#b87333" />
-                            </linearGradient>
-                        </defs>
-                        
-                        {/* Copper Traces */}
-                        <path d="M50 50 L15 15 M50 50 L85 15 M50 50 L15 85 M50 50 L85 85 M50 50 L50 10 M50 50 L50 90" stroke="url(#copperColor)" strokeWidth="1.5" strokeOpacity="0.5" strokeDasharray="3,3" />
-                        <circle cx="15" cy="15" r="1.5" fill="#c87533" />
-                        <circle cx="85" cy="15" r="1.5" fill="#c87533" />
-                        <circle cx="15" cy="85" r="1.5" fill="#c87533" />
-                        <circle cx="85" cy="85" r="1.5" fill="#c87533" />
-                        <circle cx="50" cy="10" r="1.5" fill="#c87533" />
-                        <circle cx="50" cy="90" r="1.5" fill="#c87533" />
-
-                        {/* Orange-Red Flames */}
-                        <path d="M15 50 C15 25 40 10 50 10 C60 10 85 25 85 50 C70 40 60 35 50 35 C40 35 30 40 15 50 Z" fill="url(#flameColor)" filter="drop-shadow(0 2px 4px rgba(255,59,48,0.4))" />
-                        
-                        {/* Blue Liquid Bottom Curve */}
-                        <path d="M15 50 C15 75 40 90 50 90 C60 90 85 75 85 50 C70 60 60 65 50 65 C40 65 30 60 15 50 Z" fill="url(#liquidColor)" filter="drop-shadow(0 -2px 4px rgba(0,240,255,0.3))" />
-
-                        {/* Hexagonal core */}
-                        <polygon points="50 38, 61 44, 61 56, 50 62, 39 56, 39 44" fill="#0b132b" stroke="#00f0ff" strokeWidth="2.5" filter="drop-shadow(0 0 6px rgba(0,240,255,0.7))" />
-                        
-                        <circle cx="50" cy="50" r="3" fill="#00f0ff" />
-                        <circle cx="50" cy="50" r="1" fill="#ffffff" />
-                    </svg>
+                    <img src={logoImg} className="logo-eye-svg" alt="FireEye Logo" />
                     <div className="brand-text-container">
-                        <span className="brand-title">FIREEYE CENTRAL</span>
-                        <span className="brand-subtitle">AI SMART FIRE SURVEILLANCE</span>
+                        <span className="brand-title">FireEye AI System</span>
+                        <span className="brand-subtitle">Powered by AI</span>
                     </div>
                 </div>
 
-                {/* Page links (Top Nav tabs) */}
                 <nav className="nav-tabs">
                     <button
                         className={`nav-tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
                         onClick={() => setActiveTab('dashboard')}
                     >
                         Dashboard
-                    </button>
-                    <button
-                        className={`nav-tab-btn ${activeTab === 'faces' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('faces')}
-                    >
-                        Face Verification
                     </button>
                     <button
                         className={`nav-tab-btn ${activeTab === 'events' ? 'active' : ''}`}
@@ -118,7 +75,7 @@ const MainLayout = () => {
                 <div className="navbar-controls">
                     {/* Notifications center bell */}
                     <div className="notifications-bell-container" ref={dropdownRef}>
-                        <button 
+                        <button
                             className={`btn-notification-bell ${unreadCount > 0 ? 'pulse' : ''}`}
                             onClick={() => setShowNotifications(!showNotifications)}
                             title="View Notifications logs"
@@ -143,8 +100,8 @@ const MainLayout = () => {
                                         </div>
                                     ) : (
                                         notifications.map((n) => (
-                                            <div 
-                                                key={n.id} 
+                                            <div
+                                                key={n.id}
                                                 className={`dropdown-notification-card ${n.is_read ? 'read' : 'unread'} ${n.risk_level?.toLowerCase() || ''}`}
                                             >
                                                 <div className="card-status-strip"></div>
@@ -154,15 +111,15 @@ const MainLayout = () => {
                                                         <span className="time-stamp">{n.created_at?.replace('T', ' ').substring(11, 19)}</span>
                                                     </div>
                                                     <div className="card-message">{n.message}</div>
-                                                    
+
                                                     {n.snapshot_path && (
                                                         <div className="card-thumbnail-container" onClick={() => {
                                                             setActiveTab('events');
                                                             setShowNotifications(false);
                                                         }}>
-                                                            <img 
-                                                                src={`${API_BASE_URL}${n.snapshot_path}`} 
-                                                                alt="Event snapshot" 
+                                                            <img
+                                                                src={`${API_BASE_URL}${n.snapshot_path}`}
+                                                                alt="Event snapshot"
                                                                 className="card-thumbnail"
                                                             />
                                                             <span className="thumbnail-hover-text">VIEW LOGS</span>
@@ -170,7 +127,7 @@ const MainLayout = () => {
                                                     )}
                                                 </div>
                                                 {!n.is_read && (
-                                                    <button 
+                                                    <button
                                                         className="btn-mark-as-read"
                                                         onClick={(e) => {
                                                             e.stopPropagation();

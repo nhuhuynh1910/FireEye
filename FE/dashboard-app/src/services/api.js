@@ -66,6 +66,28 @@ export const api = {
     },
 
     /**
+     * Move camera to a specific zone (1 to 4)
+     */
+    async moveToZone(zoneId) {
+        const response = await fetch(`${API_BASE_URL}/api/camera/zone/${zoneId}`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error(`Failed to move camera to zone ${zoneId}`);
+        return response.json();
+    },
+
+    /**
+     * Move camera to the home preset
+     */
+    async goHome() {
+        const response = await fetch(`${API_BASE_URL}/api/camera/home`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error("Failed to move camera home");
+        return response.json();
+    },
+
+    /**
      * Control the sprinkler state (ON / OFF)
      */
     async controlSprinkler(action) {
