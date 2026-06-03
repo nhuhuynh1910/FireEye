@@ -2,6 +2,7 @@ import time
 import cv2
 import numpy as np
 import requests
+from collections import deque
 
 from hailo_platform import (
     HEF, VDevice, ConfigureParams, HailoStreamInterface,
@@ -15,7 +16,7 @@ RTSP_URL = (
     "cam/realmonitor?channel=1&subtype=0"
 )
 
-API_URL = "http://localhost:8000/api/ai/detect"
+API_URL = "http://127.0.0.1:8000/api/ai/detect"
 INPUT_NAME = "yolov8n/input_layer1"
 
 CLASSES = [
@@ -31,7 +32,7 @@ FIRE_CLASSES = ["fire", "kitchen_fire", "lighter_fire"]
 
 FIRE_THRESHOLD = 0.70
 SMOKE_THRESHOLD = 0.60
-HUMAN_THRESHOLD = 0.75
+HUMAN_THRESHOLD = 0.40
 
 FIRE_CONFIRM_FRAMES = 2
 SMOKE_CONFIRM_FRAMES = 2
@@ -40,6 +41,27 @@ HUMAN_CONFIRM_FRAMES = 3
 LOST_FRAMES_LIMIT = 1
 LOOP_DELAY = 0.03
 TOP_K_BOXES = 30
+
+
+class HysteresisFilter:
+    """Bộ lọc Hysteresis dựa trên bộ đệm vòng (deque) để xác nhận cảnh báo ổn định"""
+    def __init__(self, size, threshold):
+        self.size = size
+        self.threshold = threshold
+        self.history = deque(maxlen=size)
+
+    def add(self, conf):
+        # Đẩy kết quả vượt ngưỡng của frame hiện tại vào bộ đệm
+        self.history.append(conf >= self.threshold)
+
+    def is_confirmed(self):
+        # Chỉ trả về True nếu tất cả các phần tử trong bộ đệm đều dương tính
+        if len(self.history) < self.size:
+            return False
+        return all(self.history)
+
+    def clear(self):
+        self.history.clear()
 
 
 def softmax(x):
@@ -141,21 +163,21 @@ def get_best_bbox(det, boxes_raw, anchors, target_class_idx, w_orig, h_orig):
     class_name = CLASSES[target_class_idx]
 
     if class_name == "human":
-        # Chặn box human ma quá to
-        if bw > w_orig * 0.60:
+        # Chặn box human ma quá to (nới rộng giới hạn để nhận dạng khi ngồi gần camera)
+        if bw > w_orig * 0.85:
             return None
 
-        if bh > h_orig * 0.90:
+        if bh > h_orig * 0.98:
             return None
 
-        if area > frame_area * 0.45:
+        if area > frame_area * 0.80:
             return None
 
         # Chặn box quá nhỏ
-        if bw < w_orig * 0.04:
+        if bw < w_orig * 0.02:
             return None
 
-        if bh < h_orig * 0.10:
+        if bh < h_orig * 0.05:
             return None
 
     return bbox
@@ -186,10 +208,6 @@ def send_payload(class_name, confidence, bbox):
     print("=" * 50)
     print("PAYLOAD:", payload)
     post_ai_result(payload)
-
-
-def reset_all():
-    return "safe", None, 0.0, 0, 0, 0, 0
 
 
 def main():
@@ -235,9 +253,13 @@ def main():
     locked_confidence = 0.0
 
     lost_frames = 0
-    fire_confirm_count = 0
-    smoke_confirm_count = 0
-    human_confirm_count = 0
+
+    # Khởi tạo bộ lọc Hysteresis cho các mục tiêu cảnh báo chính
+    filters = {
+        "fire": HysteresisFilter(size=FIRE_CONFIRM_FRAMES, threshold=FIRE_THRESHOLD),
+        "smoke": HysteresisFilter(size=SMOKE_CONFIRM_FRAMES, threshold=SMOKE_THRESHOLD),
+        "human": HysteresisFilter(size=HUMAN_CONFIRM_FRAMES, threshold=HUMAN_THRESHOLD)
+    }
 
     with InferVStreams(
         network_group,
@@ -261,9 +283,10 @@ def main():
                     locked_bbox = None
                     locked_confidence = 0.0
                     lost_frames = 0
-                    fire_confirm_count = 0
-                    smoke_confirm_count = 0
-                    human_confirm_count = 0
+                    
+                    # Reset bộ đệm các bộ lọc
+                    for f in filters.values():
+                        f.clear()
 
                     print("CAMERA BLOCKED / LOW DETAIL")
                     send_payload("safe", 0.0, None)
@@ -289,48 +312,38 @@ def main():
                 smoke_conf = class_scores.get("smoke", 0.0)
                 human_conf = class_scores.get("human", 0.0)
 
+                # Đẩy trạng thái của frame hiện tại vào bộ đệm các bộ lọc
+                filters["fire"].add(fire_conf)
+                filters["smoke"].add(smoke_conf)
+                filters["human"].add(human_conf)
+
+                is_fire_confirmed = filters["fire"].is_confirmed()
+                is_smoke_confirmed = filters["smoke"].is_confirmed()
+                is_human_confirmed = filters["human"].is_confirmed()
+
                 current_class = "safe"
                 confidence = 0.0
                 target_class_idx = -1
 
-                if fire_conf >= FIRE_THRESHOLD:
-                    fire_confirm_count += 1
-                    smoke_confirm_count = 0
-                    human_confirm_count = 0
+                # Thứ tự ưu tiên cảnh báo: Lửa > Khói > Người
+                if is_fire_confirmed:
+                    best_fire_class = max(
+                        FIRE_CLASSES,
+                        key=lambda c: class_scores.get(c, 0.0)
+                    )
+                    current_class = best_fire_class
+                    confidence = fire_conf
+                    target_class_idx = CLASSES.index(best_fire_class)
 
-                    if fire_confirm_count >= FIRE_CONFIRM_FRAMES:
-                        best_fire_class = max(
-                            FIRE_CLASSES,
-                            key=lambda c: class_scores.get(c, 0.0)
-                        )
-                        current_class = best_fire_class
-                        confidence = fire_conf
-                        target_class_idx = CLASSES.index(best_fire_class)
+                elif is_smoke_confirmed:
+                    current_class = "smoke"
+                    confidence = smoke_conf
+                    target_class_idx = CLASSES.index("smoke")
 
-                elif smoke_conf >= SMOKE_THRESHOLD:
-                    smoke_confirm_count += 1
-                    fire_confirm_count = 0
-                    human_confirm_count = 0
-
-                    if smoke_confirm_count >= SMOKE_CONFIRM_FRAMES:
-                        current_class = "smoke"
-                        confidence = smoke_conf
-                        target_class_idx = CLASSES.index("smoke")
-
-                elif human_conf >= HUMAN_THRESHOLD:
-                    human_confirm_count += 1
-                    fire_confirm_count = 0
-                    smoke_confirm_count = 0
-
-                    if human_confirm_count >= HUMAN_CONFIRM_FRAMES:
-                        current_class = "human"
-                        confidence = human_conf
-                        target_class_idx = CLASSES.index("human")
-
-                else:
-                    fire_confirm_count = 0
-                    smoke_confirm_count = 0
-                    human_confirm_count = 0
+                elif is_human_confirmed:
+                    current_class = "human"
+                    confidence = human_conf
+                    target_class_idx = CLASSES.index("human")
 
                 current_bbox = None
 
@@ -350,9 +363,9 @@ def main():
                     locked_bbox = current_bbox
                     lost_frames = 0
                 else:
-                    # Quan trọng: nếu human bị bbox filter loại thì reset confirm
+                    # Nếu human bị loại bởi bộ lọc bbox hoặc không được confirm, xoá bộ đệm human
                     if current_class == "human":
-                        human_confirm_count = 0
+                        filters["human"].clear()
 
                     lost_frames += 1
 
@@ -367,10 +380,10 @@ def main():
                 print("LOCKED CLASS:", locked_class)
                 print("SCORES:", class_scores)
                 print(
-                    "CONFIRM:",
-                    "fire", fire_confirm_count,
-                    "smoke", smoke_confirm_count,
-                    "human", human_confirm_count
+                    "CONFIRM (history length):",
+                    "fire", len(filters["fire"].history),
+                    "smoke", len(filters["smoke"].history),
+                    "human", len(filters["human"].history)
                 )
 
                 send_payload(

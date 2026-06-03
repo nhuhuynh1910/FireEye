@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import { useSystem } from '../store/SystemContext';
 
 export const Settings = () => {
-    const { fetchEvents, mqttConnected } = useSystem();
+    const { fetchEvents, mqttConnected, faceWatchActive, toggleFaceWatch } = useSystem();
 
     // IoT Sensor simulation states
     const [smokeValue, setSmokeValue] = useState(12);
@@ -334,6 +334,30 @@ export const Settings = () => {
                 >
                     RESET SECURITY SHIELD (SAFE STATE)
                 </button>
+            </div>
+
+            {/* Face Recognition Controller Card */}
+            <div className="settings-card">
+                <h3 className="face-db-title">REAL-TIME FACE WATCHER SERVICE</h3>
+                <div className="setting-toggle-item" style={{ marginTop: '15px' }}>
+                    <div className="setting-toggle-info">
+                        <span className="setting-toggle-label">AUTO FACE RECOGNITION</span>
+                        <span className="setting-toggle-desc">Scan camera frames every 3s for face matching</span>
+                    </div>
+                    <label className="switch-container">
+                        <input
+                            type="checkbox"
+                            checked={faceWatchActive}
+                            onChange={toggleFaceWatch}
+                        />
+                        <span className="switch-slider"></span>
+                    </label>
+                </div>
+                <p className="mqtt-health-desc" style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.4', marginTop: '12px' }}>
+                    Service Status: <strong style={{ color: faceWatchActive ? 'var(--accent-cyan)' : 'var(--accent-red)' }}>
+                        {faceWatchActive ? 'RUNNING' : 'STOPPED'}
+                    </strong>
+                </p>
             </div>
 
             {/* MQTT Health state card */}

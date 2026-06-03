@@ -195,7 +195,8 @@ export const api = {
                 fire: data.fire || false,
                 smoke: data.smoke || false,
                 human: data.human || false,
-                confidence: data.confidence || 0.0
+                confidence: data.confidence || 0.0,
+                bbox: data.bbox || null
             })
         });
         if (!response.ok) throw new Error("Failed to update AI detection");

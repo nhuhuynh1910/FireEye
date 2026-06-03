@@ -1,14 +1,42 @@
 # -*- coding: utf-8 -*-
 import os
 
+# Hàm nạp file .env thủ công không cần thư viện ngoài
+def load_dotenv(dotenv_path=".env"):
+    if os.path.exists(dotenv_path):
+        try:
+            with open(dotenv_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split("=", 1)
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        val = parts[1].strip().strip('"').strip("'")
+                        os.environ[key] = val
+        except Exception as e:
+            print(f"Error loading .env file: {e}")
+
+# Quét qua các vị trí có thể có của file .env
+current_dir = os.path.dirname(os.path.abspath(__file__))
+dotenv_candidates = [
+    ".env",
+    "../.env",
+    os.path.join(current_dir, "../.env"),
+    os.path.join(current_dir, "../../.env")
+]
+for cand in dotenv_candidates:
+    load_dotenv(cand)
+
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 8000
 DEBUG = True
 
 # Camera Dahua LAN
-CAMERA_IP = "10.10.10.2"
-CAMERA_USERNAME = "admin"   
-CAMERA_PASSWORD = "L2D710CD"
+CAMERA_IP = os.getenv("CAMERA_IP", "10.10.10.2")
+CAMERA_USERNAME = os.getenv("CAMERA_USERNAME", "admin")   
+CAMERA_PASSWORD = os.getenv("CAMERA_PASSWORD", "L2D710CD")
 
 CAMERA_RTSP_URL = (
     f"rtsp://{CAMERA_USERNAME}:{CAMERA_PASSWORD}"
@@ -19,8 +47,11 @@ DAHUA_BASE_URL = f"http://{CAMERA_IP}"
 PTZ_CHANNEL = 1
 
 # MQTT Broker chạy trên Raspberry Pi
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
+MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
+try:
+    MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+except ValueError:
+    MQTT_PORT = 1883
 MQTT_USERNAME = os.getenv("MQTT_USERNAME", "fireeye")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "fireeye_password")
 
@@ -49,3 +80,9 @@ ESP32_SENSOR_TOPIC_TO_ZONE = {
 }
 
 GAS_THRESHOLD_LOW = 600
+
+# Cấu hình xoay camera vật lý (0, 90, 180, 270)
+try:
+    CAMERA_PHYSICAL_ROTATION = int(os.getenv("CAMERA_PHYSICAL_ROTATION", "0"))
+except ValueError:
+    CAMERA_PHYSICAL_ROTATION = 0

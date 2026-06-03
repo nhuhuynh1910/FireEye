@@ -17,6 +17,7 @@ from routes.sprinkler_route import router as sprinkler_router
 from services.mqtt_service import mqtt_service
 from services.db_service import init_db
 from services.cleanup_service import start_cleanup_worker
+from services.camera_service import camera_service
 
 app = FastAPI(
     title="FireEye Backend",
@@ -27,7 +28,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # Đặt thành False vì allow_origins là "*" để tránh lỗi cú pháp FastAPI
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -36,7 +37,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(status_router)
 app.include_router(camera_router)
-app.include_router(sensor_router)
+app.include_router(sensor_role_router if 'sensor_role_router' in globals() else sensor_router)
 app.include_router(ai_router)
 app.include_router(ptz_router)
 app.include_router(mqtt_router)
@@ -50,11 +51,13 @@ def startup_event():
     init_db()
     mqtt_service.start()
     start_cleanup_worker()
+    camera_service.start_grabber()
 
 
 @app.on_event("shutdown")
 def shutdown_event():
     mqtt_service.stop()
+    camera_service.stop_grabber()
 
 
 @app.get("/")
@@ -102,9 +105,9 @@ def home():
             "/api/faces/watch/status",
             "/api/faces/people",
 
-            "/static/snapshots/{filename}"
+            "/static/snapshots/{filename}",
             "/api/sprinkler/zone/{zone_id}/accept",
-"/api/sprinkler/zone/{zone_id}/reject",
+            "/api/sprinkler/zone/{zone_id}/reject",
         ]
     }
 

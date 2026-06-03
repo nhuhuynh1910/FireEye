@@ -11,8 +11,9 @@ export const EventLogs = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState(null);
 
-    const loadEvents = async () => {
-        setIsLoading(true);
+    const loadEvents = async (silent = false) => {
+        const isSilent = silent === true; // Chỉ coi là silent nếu truyền chính xác giá trị true (tránh React event object)
+        if (!isSilent) setIsLoading(true);
         try {
             const res = await api.getEvents(100);
             if (res.status === "success") {
@@ -21,12 +22,19 @@ export const EventLogs = () => {
         } catch (err) {
             console.error("Failed to load events:", err);
         } finally {
-            setIsLoading(false);
+            if (!isSilent) setIsLoading(false);
         }
     };
 
     useEffect(() => {
-        loadEvents();
+        loadEvents(false); // Lần đầu tải hiển thị spinner
+        
+        // Tự động làm mới mỗi 2.5 giây chạy ngầm
+        const interval = setInterval(() => {
+            loadEvents(true);
+        }, 2500);
+
+        return () => clearInterval(interval);
     }, []);
 
     const formatTime = (timeStr) => {
@@ -39,7 +47,7 @@ export const EventLogs = () => {
         <div className="events-panel">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 className="face-db-title" style={{ marginBottom: 0 }}>SECURITY EVENT LOGS DATABASE</h3>
-                <button className="btn-tech-action" onClick={loadEvents} disabled={isLoading} style={{ marginTop: 0 }}>
+                <button className="btn-tech-action" onClick={() => loadEvents(false)} disabled={isLoading} style={{ marginTop: 0 }}>
                     {isLoading ? "POLLING SQL..." : "REFRESH LOGS"}
                 </button>
             </div>

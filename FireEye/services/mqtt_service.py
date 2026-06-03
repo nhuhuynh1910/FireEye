@@ -8,7 +8,9 @@ from config.settings import (
     MQTT_ALERT_TOPIC,
     MQTT_CONTROL_TOPIC,
     MQTT_USERNAME,
-    MQTT_PASSWORD
+    MQTT_PASSWORD,
+    ESP32_SENSOR_TOPIC_TO_ZONE,
+    GAS_THRESHOLD_LOW
 )
 
 from data.state import update_sensor, update_sprinkler
@@ -19,15 +21,9 @@ from services.camera_service import camera_service
 # ESP32 ZONE TOPICS
 # ==========================
 
-ESP32_SENSOR_TOPIC_TO_ZONE = {
-    "esp32c3_1/sensor": 1
-}
-
 ESP32_MOTOR_TOPIC_BY_ZONE = {
     1: "esp32c3_1/motor"
 }
-
-GAS_THRESHOLD_LOW = 600
 
 
 class MQTTService:

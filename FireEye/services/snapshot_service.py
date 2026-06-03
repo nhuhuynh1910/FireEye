@@ -9,16 +9,9 @@ SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def capture_snapshot(event_type: str = "event"):
-    cap = camera_service.get_capture()
+    ret, frame = camera_service.get_latest_frame()
 
-    if not cap.isOpened():
-        cap.release()
-        return None
-
-    ret, frame = cap.read()
-    cap.release()
-
-    if not ret:
+    if not ret or frame is None:
         return None
 
     # Resize frame to 960x540 to align with the frontend bounding box coordinates

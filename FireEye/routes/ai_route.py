@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from services.hailo_service import hailo_service
@@ -38,6 +38,38 @@ def calculate_risk_level(fire: bool, smoke: bool, human: bool) -> str:
     return "SAFE"
 
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                pass
+
+manager = ConnectionManager()
+
+
+@router.websocket("/ws/ai")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+
 @router.get("/api/ai/status")
 def ai_status():
     return {
@@ -47,7 +79,7 @@ def ai_status():
 
 
 @router.post("/api/ai/detect")
-def ai_detect(data: AiDetectRequest):
+async def ai_detect(data: AiDetectRequest):
     result = update_ai_detection(
         fire_detected=data.fire,
         smoke_detected=data.smoke,
@@ -55,6 +87,15 @@ def ai_detect(data: AiDetectRequest):
         confidence=data.confidence,
         bbox=data.bbox
     )
+
+    await manager.broadcast({
+        "type": "ai_detection",
+        "fire": data.fire,
+        "smoke": data.smoke,
+        "human": data.human,
+        "confidence": data.confidence,
+        "bbox": data.bbox
+    })
 
     danger = data.fire or data.smoke
 

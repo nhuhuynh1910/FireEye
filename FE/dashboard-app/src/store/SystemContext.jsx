@@ -25,6 +25,7 @@ export const SystemProvider = ({ children }) => {
     // AI states
     const [aiFireDetected, setAiFireDetected] = useState(false);
     const [aiSmokeDetected, setAiSmokeDetected] = useState(false);
+    const [aiHumanDetected, setAiHumanDetected] = useState(false);
     const [aiConfidence, setAiConfidence] = useState(0.0);
     const [aiBbox, setAiBbox] = useState(null);
     const [hailoStatus, setHailoStatus] = useState("standby");
@@ -174,6 +175,59 @@ export const SystemProvider = ({ children }) => {
         }
     }, [isBackendConnected, sensorNode, fetchEvents]);
 
+    // WebSocket real-time AI alerts
+    useEffect(() => {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/ai`;
+        
+        let socket;
+        let reconnectTimeout;
+        let isClosed = false;
+
+        const connectWS = () => {
+            if (isClosed) return;
+            console.log("Connecting to AI WebSocket:", wsUrl);
+            socket = new WebSocket(wsUrl);
+
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === "ai_detection") {
+                        setAiFireDetected(data.fire);
+                        setAiSmokeDetected(data.smoke);
+                        setAiHumanDetected(data.human);
+                        setAiConfidence(data.confidence);
+                        setAiBbox(data.bbox);
+                        
+                        // Update overall alert level instantly
+                        const isUnderDanger = data.fire || data.smoke;
+                        setOverallAlertLevel(isUnderDanger ? "danger" : (data.human ? "warning" : "safe"));
+                    }
+                } catch (err) {
+                    console.error("Failed to parse AI WebSocket data:", err);
+                }
+            };
+
+            socket.onclose = () => {
+                console.log("AI WebSocket disconnected. Reconnecting in 3 seconds...");
+                reconnectTimeout = setTimeout(connectWS, 3000);
+            };
+
+            socket.onerror = (err) => {
+                console.error("AI WebSocket error:", err);
+                socket.close();
+            };
+        };
+
+        connectWS();
+
+        return () => {
+            isClosed = true;
+            if (socket) socket.close();
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        };
+    }, []);
+
     // API Polling Loop
     useEffect(() => {
         let isMounted = true;
@@ -201,6 +255,7 @@ export const SystemProvider = ({ children }) => {
                 // Set AI Detection states
                 setAiFireDetected(status.ai?.fireDetected || false);
                 setAiSmokeDetected(status.ai?.smokeDetected || false);
+                setAiHumanDetected(status.ai?.humanDetected || false);
                 setAiConfidence(status.ai?.confidence || 0.0);
                 setAiBbox(status.ai?.bbox || null);
                 setHailoStatus(status.aiAccelerator?.status || "standby");
@@ -230,6 +285,7 @@ export const SystemProvider = ({ children }) => {
                 setFaceWatchActive(false);
                 setUnreadCount(0);
                 setAiBbox(null);
+                setAiHumanDetected(false);
                 setHailoStatus("offline");
                 
                 // Fluctuating Simulated Telemetry
@@ -251,7 +307,7 @@ export const SystemProvider = ({ children }) => {
         };
 
         pollAPIs();
-        const interval = setInterval(pollAPIs, 1500);
+        const interval = setInterval(pollAPIs, 2000);
 
         return () => {
             isMounted = false;
@@ -315,6 +371,7 @@ export const SystemProvider = ({ children }) => {
             sensorNode,
             aiFireDetected,
             aiSmokeDetected,
+            aiHumanDetected,
             aiConfidence,
             aiBbox,
             hailoStatus,

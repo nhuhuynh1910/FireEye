@@ -5,136 +5,401 @@ import { api } from '../services/api';
 const SystemContext = createContext(null);
 
 export const SystemProvider = ({ children }) => {
+    const [activeTab, setActiveTab] = useState('dashboard');
     const [activeCameraId, setActiveCameraId] = useState(1);
-    const [is2x2Layout, setIs2x2Layout] = useState(true);
+    const [isBackendConnected, setIsBackendConnected] = useState(false);
     
+    // Dynamic IP Config
+    const [raspberryPiIp, setRaspberryPiIp] = useState("192.168.1.45");
+
+    // Sync base URL dynamically when IP changes
+    useEffect(() => {
+        api.setIp(raspberryPiIp);
+    }, [raspberryPiIp]);
+
     // Status states
     const [isCameraOnline, setIsCameraOnline] = useState(false);
     const [npuLoad, setNpuLoad] = useState(0);
     const [systemTemp, setSystemTemp] = useState(42.5);
+    const [sprinklerState, setSprinklerState] = useState("OFF");
+    const [overallAlertLevel, setOverallAlertLevel] = useState("safe"); // safe, warning, danger
     
     // Sensor states
     const [smokeValue, setSmokeValue] = useState(12);
     const [flameValue, setFlameValue] = useState(8);
     const [smokeDetected, setSmokeDetected] = useState(false);
     const [flameDetected, setFlameDetected] = useState(false);
+    const [sensorNode, setSensorNode] = useState("Node-01");
     
-    // Alerts State
-    const [alerts, setAlerts] = useState([
-        { id: 4, time: "18:08:15", desc: "Motion detected at Back Door", level: "high" },
-        { id: 3, time: "18:08:50", desc: "Parking Lot Camera 2 - Online", level: "info" },
-        { id: 2, time: "17:59:30", desc: "Object identified at Front Gate", level: "med" },
-        { id: 1, time: "17:45:01", desc: "System Update Completed", level: "info" }
-    ]);
+    // AI states
+    const [aiFireDetected, setAiFireDetected] = useState(false);
+    const [aiSmokeDetected, setAiSmokeDetected] = useState(false);
+    const [aiHumanDetected, setAiHumanDetected] = useState(false);
+    const [aiConfidence, setAiConfidence] = useState(0.0);
+    const [aiBbox, setAiBbox] = useState(null);
+    const [hailoStatus, setHailoStatus] = useState("standby");
+    
+    // Event Logs / Alerts
+    const [events, setEvents] = useState([]);
+    
+    // Auto Scan PTZ state
+    const [autoScanActive, setAutoScanActive] = useState(false);
 
-    const addAlert = useCallback((desc, level = 'info') => {
-        const now = new Date();
-        const pad = (num) => String(num).padStart(2, '0');
-        const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-        
-        setAlerts(prev => [
-            {
-                id: Date.now(),
-                time: timeStr,
-                desc,
-                level,
-                isNew: true
-            },
-            ...prev
-        ].slice(0, 5)); // Limit to last 5 alerts on mobile screens
+    // PTZ panel visibility state
+    const [isPTZVisible, setIsPTZVisible] = useState(true);
+
+    // Notifications state
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    // Face watcher state
+    const [faceWatchActive, setFaceWatchActive] = useState(false);
+
+    // MQTT connection state
+    const [mqttConnected, setMqttConnected] = useState(false);
+
+    // Fetch notifications
+    const fetchNotifications = useCallback(async () => {
+        try {
+            const res = await api.getNotifications();
+            if (res && res.success) {
+                setNotifications(res.data);
+            }
+            const countRes = await api.getUnreadNotificationCount();
+            if (countRes && countRes.success) {
+                setUnreadCount(countRes.unread);
+            }
+        } catch (err) {
+            console.error("Failed to fetch notifications:", err);
+        }
     }, []);
+
+    // Mark notification as read
+    const markAsRead = useCallback(async (eventId) => {
+        try {
+            const res = await api.markNotificationAsRead(eventId);
+            if (res && res.success) {
+                fetchNotifications();
+            }
+        } catch (err) {
+            console.error(`Failed to mark notification ${eventId} as read:`, err);
+        }
+    }, [fetchNotifications]);
+
+    // Face watcher actions
+    const toggleFaceWatch = useCallback(async () => {
+        try {
+            if (faceWatchActive) {
+                const res = await api.stopFaceWatch();
+                if (res && res.success) {
+                    setFaceWatchActive(false);
+                }
+            } else {
+                const res = await api.startFaceWatch();
+                if (res && res.success) {
+                    setFaceWatchActive(true);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to toggle face watch worker:", err);
+        }
+    }, [faceWatchActive]);
+
+    const checkFaceWatchStatus = useCallback(async () => {
+        try {
+            const res = await api.getFaceWatchStatus();
+            if (res && 'running' in res) {
+                setFaceWatchActive(res.running);
+            }
+        } catch (err) {
+            console.error("Failed to get face watch status:", err);
+        }
+    }, []);
+
+    const fetchMQTTStatus = useCallback(async () => {
+        try {
+            const res = await api.getMQTTStatus();
+            if (res && 'connected' in res) {
+                setMqttConnected(res.connected);
+            }
+        } catch (err) {
+            console.error("Failed to get MQTT status:", err);
+        }
+    }, []);
+
+    // Fetch Events list from SQLite
+    const fetchEvents = useCallback(async () => {
+        try {
+            const response = await api.getEvents(10);
+            if (response && response.status === "success") {
+                setEvents(response.data);
+            }
+        } catch (err) {
+            console.error("Failed to fetch events from backend:", err);
+        }
+    }, []);
+
+    // Toggle Sprinkler ON/OFF
+    const toggleSprinkler = useCallback(async () => {
+        const nextAction = sprinklerState === "ON" ? "OFF" : "ON";
+        try {
+            await api.controlSprinkler(nextAction);
+            setSprinklerState(nextAction);
+            fetchEvents();
+        } catch (err) {
+            console.error("Failed to control sprinkler:", err);
+            // Simulated toggle fallback if offline
+            if (!isBackendConnected) {
+                setSprinklerState(nextAction);
+            }
+        }
+    }, [sprinklerState, isBackendConnected, fetchEvents]);
+
+    // Emergency Stop: Turn off pump & clear simulated sensor alerts
+    const triggerEmergencyStop = useCallback(async () => {
+        try {
+            await api.controlSprinkler("OFF");
+            setSprinklerState("OFF");
+            
+            // If backend connected, reset sensors and AI to safe
+            if (isBackendConnected) {
+                await api.updateSensors({
+                    smokeDetected: false,
+                    flameDetected: false,
+                    smokeValue: 12,
+                    flameValue: 5,
+                    node: sensorNode
+                });
+                await api.triggerAIDetect({
+                    fire: false,
+                    smoke: false,
+                    human: false,
+                    confidence: 0.0
+                });
+            }
+            fetchEvents();
+        } catch (err) {
+            console.error("Emergency stop failed:", err);
+            setSprinklerState("OFF");
+        }
+    }, [isBackendConnected, sensorNode, fetchEvents]);
+
+    // WebSocket real-time AI alerts
+    useEffect(() => {
+        const wsUrl = `ws://${raspberryPiIp}:8000/ws/ai`;
+        
+        let socket;
+        let reconnectTimeout;
+        let isClosed = false;
+
+        const connectWS = () => {
+            if (isClosed) return;
+            console.log("Connecting to AI WebSocket:", wsUrl);
+            socket = new WebSocket(wsUrl);
+
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === "ai_detection") {
+                        setAiFireDetected(data.fire);
+                        setAiSmokeDetected(data.smoke);
+                        setAiHumanDetected(data.human);
+                        setAiConfidence(data.confidence);
+                        setAiBbox(data.bbox);
+                        
+                        // Update overall alert level instantly
+                        const isUnderDanger = data.fire || data.smoke;
+                        setOverallAlertLevel(isUnderDanger ? "danger" : (data.human ? "warning" : "safe"));
+                    }
+                } catch (err) {
+                    console.error("Failed to parse AI WebSocket data:", err);
+                }
+            };
+
+            socket.onclose = () => {
+                console.log("AI WebSocket disconnected. Reconnecting in 3 seconds...");
+                reconnectTimeout = setTimeout(connectWS, 3000);
+            };
+
+            socket.onerror = (err) => {
+                console.error("AI WebSocket error:", err);
+                socket.close();
+            };
+        };
+
+        connectWS();
+
+        return () => {
+            isClosed = true;
+            if (socket) socket.close();
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        };
+    }, [raspberryPiIp]);
 
     // API Polling Loop
     useEffect(() => {
         let isMounted = true;
+        let localNpuLoad = 0;
+        let localTemp = 42.5;
         
         const pollAPIs = async () => {
-            // Poll Camera Status
             try {
-                const status = await api.getCameraStatus();
-                if (isMounted) {
-                    setIsCameraOnline(status.cameraOnline);
-                }
-            } catch (err) {
-                if (isMounted) setIsCameraOnline(false);
-            }
+                // Single poll status endpoint
+                const status = await api.getSystemStatus();
+                if (!isMounted) return;
 
-            // Poll AI/NPU status
-            try {
-                const aiStatus = await api.getAIStatus();
-                if (isMounted) {
-                    setNpuLoad(parseFloat(aiStatus.npu_load || 0));
-                    setSystemTemp(parseFloat(aiStatus.npu_temp || 42.5));
-                }
-            } catch (err) {
-                if (isMounted) {
-                    setNpuLoad(Math.floor(Math.random() * 20) + 15);
-                    setSystemTemp(prev => {
-                        const next = prev + (Math.random() - 0.5) * 0.2;
-                        return Math.max(40, Math.min(45, next));
-                    });
-                }
-            }
+                setIsBackendConnected(true);
+                setIsCameraOnline(status.camera?.online || false);
+                setSprinklerState(status.sprinkler?.status || "OFF");
+                setOverallAlertLevel(status.overallAlertLevel || "safe");
+                
+                // Set IoT sensors
+                setSmokeValue(status.sensor?.smokeValue || 0);
+                setFlameValue(status.sensor?.flameValue || 0);
+                setSmokeDetected(status.sensor?.smokeDetected || false);
+                setFlameDetected(status.sensor?.flameDetected || false);
+                setSensorNode(status.sensor?.node || "Node-01");
+                
+                // Set AI Detection states
+                setAiFireDetected(status.ai?.fireDetected || false);
+                setAiSmokeDetected(status.ai?.smokeDetected || false);
+                setAiHumanDetected(status.ai?.humanDetected || false);
+                setAiConfidence(status.ai?.confidence || 0.0);
+                setAiBbox(status.ai?.bbox || null);
+                setHailoStatus(status.aiAccelerator?.status || "standby");
 
-            // Poll Sensors
-            try {
-                const sensors = await api.getSensors();
-                if (isMounted) {
-                    setSmokeValue(sensors.smokeValue || 0);
-                    setFlameValue(sensors.flameValue || 0);
-                    setSmokeDetected(sensors.smokeDetected || false);
-                    setFlameDetected(sensors.flameDetected || false);
-                }
+                // NPU details (Simulate fluctuations on standby/load)
+                const isUnderLoad = status.overallAlertLevel !== "safe";
+                const targetLoad = isUnderLoad ? 82 : 24;
+                const targetTemp = isUnderLoad ? 58.6 : 41.2;
+                
+                localNpuLoad += (targetLoad - localNpuLoad) * 0.2;
+                localTemp += (targetTemp - localTemp) * 0.1;
+                
+                setNpuLoad(localNpuLoad + (Math.random() - 0.5) * 2);
+                setSystemTemp(localTemp + (Math.random() - 0.5) * 0.3);
+
+                // Fetch real-time statuses
+                fetchNotifications();
+                checkFaceWatchStatus();
+                fetchMQTTStatus();
+
             } catch (err) {
-                if (isMounted) {
-                    setSmokeValue(12);
-                    setFlameValue(8);
-                    setSmokeDetected(false);
-                    setFlameDetected(false);
-                }
+                // Offline Simulated Mode Fallback
+                if (!isMounted) return;
+                setIsBackendConnected(false);
+                setIsCameraOnline(true); // Simulate Dahua as online for rendering
+                setMqttConnected(false);
+                setFaceWatchActive(false);
+                setUnreadCount(0);
+                setAiBbox(null);
+                setAiHumanDetected(false);
+                setHailoStatus("offline");
+                
+                // Fluctuating Simulated Telemetry
+                setNpuLoad(prev => {
+                    const base = overallAlertLevel !== "safe" ? 78 : 18;
+                    const val = prev + (base - prev) * 0.2 + (Math.random() - 0.5) * 1.5;
+                    return Math.max(5, Math.min(100, val));
+                });
+                
+                setSystemTemp(prev => {
+                    const base = overallAlertLevel !== "safe" ? 56 : 42;
+                    const val = prev + (base - prev) * 0.1 + (Math.random() - 0.5) * 0.2;
+                    return Math.max(30, Math.min(85, val));
+                });
             }
         };
 
         pollAPIs();
-        const interval = setInterval(pollAPIs, 2500);
+        const interval = setInterval(pollAPIs, 2000);
 
         return () => {
             isMounted = false;
             clearInterval(interval);
         };
-    }, []);
+    }, [overallAlertLevel, fetchNotifications, checkFaceWatchStatus, fetchMQTTStatus]);
 
-    // Alert Queue Simulator
+    // Poll Event logs periodically
     useEffect(() => {
-        const templates = [
-            { desc: "Motion detected at Lobby", level: "med" },
-            { desc: "AI: Unrecognized vehicle at Front Gate", level: "high" },
-            { desc: "Back Door sensor alert: Door opened", level: "high" }
-        ];
+        fetchEvents();
+        const interval = setInterval(fetchEvents, 3000);
+        return () => clearInterval(interval);
+    }, [fetchEvents]);
 
-        const alertInterval = setInterval(() => {
-            const tmpl = templates[Math.floor(Math.random() * templates.length)];
-            addAlert(tmpl.desc, tmpl.level);
-        }, 25000);
+    // Enhanced scanning behavior based on preset zones
+    useEffect(() => {
+        if (!autoScanActive) return;
+        
+        const scanZones = [1, 2, 3, 4];
+        let currentZoneIndex = 0;
+        
+        const scanSequence = async () => {
+            if (isBackendConnected && isCameraOnline) {
+                try {
+                    const zoneId = scanZones[currentZoneIndex];
+                    await api.moveToZone(zoneId);
+                    currentZoneIndex = (currentZoneIndex + 1) % scanZones.length;
+                } catch (err) {
+                    console.error("PTZ AutoScan zone transition failed:", err);
+                }
+            }
+        };
 
-        return () => clearInterval(alertInterval);
-    }, [addAlert]);
+        // Run immediately on start, then repeat every 15 seconds
+        scanSequence();
+        const interval = setInterval(scanSequence, 15000);
+        
+        return () => {
+            clearInterval(interval);
+            // Return to home position when scanning stops
+            if (isBackendConnected && isCameraOnline) {
+                api.goHome().catch(err => console.error("Failed to return camera to home on disable:", err));
+            }
+        };
+    }, [autoScanActive, isBackendConnected, isCameraOnline]);
 
     return (
         <SystemContext.Provider value={{
+            activeTab,
+            setActiveTab,
             activeCameraId,
             setActiveCameraId,
-            is2x2Layout,
-            setIs2x2Layout,
+            isBackendConnected,
             isCameraOnline,
+            raspberryPiIp,
+            setRaspberryPiIp,
             npuLoad,
             systemTemp,
+            sprinklerState,
+            overallAlertLevel,
             smokeValue,
             flameValue,
             smokeDetected,
             flameDetected,
-            alerts,
-            addAlert
+            sensorNode,
+            aiFireDetected,
+            aiSmokeDetected,
+            aiHumanDetected,
+            aiConfidence,
+            aiBbox,
+            hailoStatus,
+            events,
+            fetchEvents,
+            toggleSprinkler,
+            triggerEmergencyStop,
+            autoScanActive,
+            setAutoScanActive,
+            isPTZVisible,
+            setIsPTZVisible,
+            notifications,
+            unreadCount,
+            fetchNotifications,
+            markAsRead,
+            faceWatchActive,
+            toggleFaceWatch,
+            mqttConnected,
+            fetchMQTTStatus
         }}>
             {children}
         </SystemContext.Provider>
