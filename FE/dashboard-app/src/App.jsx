@@ -3,6 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SystemProvider, useSystem } from './store/SystemContext';
 import { Navigation } from './navigation/Navigation';
 import { TelemetrySidebar } from './components/TelemetrySidebar';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Login } from './components/Login';
+import { ChangePassword } from './components/ChangePassword';
 import logoImg from './assets/image-removebg-preview.jpg';
 import './App.css';
 
@@ -21,6 +24,8 @@ const MainLayout = () => {
         unreadCount,
         markAsRead
     } = useSystem();
+
+    const { user, logout } = useAuth();
 
     const [showNotifications, setShowNotifications] = useState(false);
     const dropdownRef = useRef(null);
@@ -68,6 +73,14 @@ const MainLayout = () => {
                     >
                         Event Logs
                     </button>
+                    {user?.role === 'ADMIN' && (
+                        <button
+                            className={`nav-tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('users')}
+                        >
+                            Users
+                        </button>
+                    )}
                     <button
                         className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
                         onClick={() => setActiveTab('settings')}
@@ -159,10 +172,25 @@ const MainLayout = () => {
                             TEMP: <strong>{systemTemp.toFixed(1)}°C</strong>
                         </div>
                     </div>
+                    
+                    {/* User profile & logout controls */}
+                    <div className="navbar-user-info">
+                        <span className="user-icon">👤</span>
+                        <div className="user-labels">
+                            <span className="user-name">{user?.full_name || user?.username}</span>
+                            <span className="user-role">{user?.role}</span>
+                        </div>
+                    </div>
+
+                    <button className="btn-logout-header" onClick={logout} title="Đăng xuất khỏi hệ thống">
+                        Đăng xuất
+                    </button>
+
                     <div className="system-status-indicator">
                         <span className="indicator-dot"></span>
                         <span className="indicator-text">SYSTEM ONLINE</span>
                     </div>
+                    
                     <button
                         className="btn-emergency-stop"
                         onClick={triggerEmergencyStop}
@@ -187,11 +215,38 @@ const MainLayout = () => {
     );
 };
 
+const AppContent = () => {
+    const { isAuthenticated, isLoading, user } = useAuth();
+
+    if (isLoading) {
+        return (
+            <div className="auth-loading-screen">
+                <div className="loader-container">
+                    <span className="spinner"></span>
+                    <p>ĐANG XÁC THỰC HỆ THỐNG FIREEYE...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return <Login />;
+    }
+
+    if (user?.is_first_login) {
+        return <ChangePassword />;
+    }
+
+    return <MainLayout />;
+};
+
 function App() {
     return (
-        <SystemProvider>
-            <MainLayout />
-        </SystemProvider>
+        <AuthProvider>
+            <SystemProvider>
+                <AppContent />
+            </SystemProvider>
+        </AuthProvider>
     );
 }
 

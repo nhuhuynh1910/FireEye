@@ -3,6 +3,53 @@
 const BACKEND_IP = import.meta.env.VITE_BACKEND_IP || (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1');
 const API_BASE_URL = `http://${BACKEND_IP}:8000`;
 
+const request = async (url, options = {}) => {
+    options.credentials = 'include'; // Ensure cookies are sent
+    options.headers = options.headers || {};
+    
+    if (!(options.body instanceof FormData)) {
+        options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
+    }
+
+    try {
+        let response = await fetch(url, options);
+
+        if (response.status === 401) {
+            // If the failure was on login or refresh itself, don't loop
+            if (url.includes('/api/auth/login') || url.includes('/api/auth/refresh') || url.includes('/api/auth/me')) {
+                throw new Error("Unauthorized");
+            }
+
+            // Attempt to refresh the access token
+            const refreshRes = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+
+            if (refreshRes.ok) {
+                // Retry the original request
+                response = await fetch(url, options);
+            } else {
+                // If refresh fails, notify the UI to logout/redirect
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('auth-unauthorized'));
+                }
+                throw new Error("Session expired. Please log in again.");
+            }
+        }
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.detail || `Request failed with status ${response.status}`);
+        }
+
+        return response.json();
+    } catch (err) {
+        console.error("API error:", err);
+        throw err;
+    }
+};
+
 export const api = {
     /**
      * Helper to get stream URL
@@ -15,36 +62,28 @@ export const api = {
      * Fetch overall system status (camera, NPU, sensors, sprinkler)
      */
     async getSystemStatus() {
-        const response = await fetch(`${API_BASE_URL}/api/status`);
-        if (!response.ok) throw new Error("Failed to fetch system status");
-        return response.json();
+        return request(`${API_BASE_URL}/api/status`);
     },
 
     /**
      * Fetch the Dahua camera status
      */
     async getCameraStatus() {
-        const response = await fetch(`${API_BASE_URL}/api/camera/status`);
-        if (!response.ok) throw new Error("Failed to fetch camera status");
-        return response.json();
+        return request(`${API_BASE_URL}/api/camera/status`);
     },
 
     /**
      * Fetch the Hailo NPU / AI status
      */
     async getAIStatus() {
-        const response = await fetch(`${API_BASE_URL}/api/ai/status`);
-        if (!response.ok) throw new Error("Failed to fetch AI status");
-        return response.json();
+        return request(`${API_BASE_URL}/api/ai/status`);
     },
 
     /**
      * Fetch the custom IoT sensor readings
      */
     async getSensors() {
-        const response = await fetch(`${API_BASE_URL}/api/sensors`);
-        if (!response.ok) throw new Error("Failed to fetch sensor readings");
-        return response.json();
+        return request(`${API_BASE_URL}/api/sensors`);
     },
 
     /**
@@ -53,97 +92,73 @@ export const api = {
      * @param {object} body - JSON payload (e.g. { code: 'left' } for stop)
      */
     async sendPTZCommand(action, body = {}) {
-        const response = await fetch(`${API_BASE_URL}/api/camera/${action}`, {
+        return request(`${API_BASE_URL}/api/camera/${action}`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
             body: JSON.stringify(body)
         });
-        if (!response.ok) throw new Error(`PTZ command ${action} failed`);
-        return response.json();
     },
 
     /**
      * Move camera to a specific zone (1 to 4)
      */
     async moveToZone(zoneId) {
-        const response = await fetch(`${API_BASE_URL}/api/camera/zone/${zoneId}`, {
+        return request(`${API_BASE_URL}/api/camera/zone/${zoneId}`, {
             method: "POST"
         });
-        if (!response.ok) throw new Error(`Failed to move camera to zone ${zoneId}`);
-        return response.json();
     },
 
     /**
      * Move camera to the home preset
      */
     async goHome() {
-        const response = await fetch(`${API_BASE_URL}/api/camera/home`, {
+        return request(`${API_BASE_URL}/api/camera/home`, {
             method: "POST"
         });
-        if (!response.ok) throw new Error("Failed to move camera home");
-        return response.json();
     },
 
     /**
      * Save current camera position as the home preset
      */
     async setHome() {
-        const response = await fetch(`${API_BASE_URL}/api/camera/set-home`, {
+        return request(`${API_BASE_URL}/api/camera/set-home`, {
             method: "POST"
         });
-        if (!response.ok) throw new Error("Failed to save camera home");
-        return response.json();
     },
 
     /**
      * Control the sprinkler state (ON / OFF)
      */
     async controlSprinkler(action) {
-        const response = await fetch(`${API_BASE_URL}/api/sprinkler/control`, {
+        return request(`${API_BASE_URL}/api/sprinkler/control`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
             body: JSON.stringify({ action })
         });
-        if (!response.ok) throw new Error(`Failed to set sprinkler to ${action}`);
-        return response.json();
     },
 
     async acceptSprinkler(zoneId) {
-        const response = await fetch(`${API_BASE_URL}/api/sprinkler/zone/${zoneId}/accept`, {
+        return request(`${API_BASE_URL}/api/sprinkler/zone/${zoneId}/accept`, {
             method: "POST"
         });
-        if (!response.ok) throw new Error(`Failed to accept sprinkler for zone ${zoneId}`);
-        return response.json();
     },
 
     async rejectSprinkler(zoneId) {
-        const response = await fetch(`${API_BASE_URL}/api/sprinkler/zone/${zoneId}/reject`, {
+        return request(`${API_BASE_URL}/api/sprinkler/zone/${zoneId}/reject`, {
             method: "POST"
         });
-        if (!response.ok) throw new Error(`Failed to reject sprinkler for zone ${zoneId}`);
-        return response.json();
     },
 
     /**
      * Fetch AI event log history
      */
     async getEvents(limit = 50) {
-        const response = await fetch(`${API_BASE_URL}/api/events?limit=${limit}`);
-        if (!response.ok) throw new Error("Failed to fetch events");
-        return response.json();
+        return request(`${API_BASE_URL}/api/events?limit=${limit}`);
     },
 
     /**
      * List registered people in Face Matching system
      */
     async getPeople() {
-        const response = await fetch(`${API_BASE_URL}/api/faces/people`);
-        if (!response.ok) throw new Error("Failed to fetch registered people");
-        return response.json();
+        return request(`${API_BASE_URL}/api/faces/people`);
     },
 
     /**
@@ -155,21 +170,17 @@ export const api = {
         formData.append("role", role);
         formData.append("image", imageFile);
 
-        const response = await fetch(`${API_BASE_URL}/api/faces/register`, {
+        return request(`${API_BASE_URL}/api/faces/register`, {
             method: "POST",
             body: formData
         });
-        if (!response.ok) throw new Error("Failed to register face");
-        return response.json();
     },
 
     /**
      * Match face from live Dahua camera snapshot
      */
     async matchCameraFace() {
-        const response = await fetch(`${API_BASE_URL}/api/faces/match-camera`);
-        if (!response.ok) throw new Error("Failed to match camera face");
-        return response.json();
+        return request(`${API_BASE_URL}/api/faces/match-camera`);
     },
 
     /**
@@ -179,23 +190,18 @@ export const api = {
         const formData = new FormData();
         formData.append("image", imageFile);
 
-        const response = await fetch(`${API_BASE_URL}/api/faces/match`, {
+        return request(`${API_BASE_URL}/api/faces/match`, {
             method: "POST",
             body: formData
         });
-        if (!response.ok) throw new Error("Failed to match face image");
-        return response.json();
     },
 
     /**
      * Update simulated sensor values
      */
     async updateSensors(data) {
-        const response = await fetch(`${API_BASE_URL}/api/sensors/update`, {
+        return request(`${API_BASE_URL}/api/sensors/update`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
             body: JSON.stringify({
                 smokeDetected: data.smokeDetected || false,
                 flameDetected: data.flameDetected || false,
@@ -204,19 +210,14 @@ export const api = {
                 node: data.node || "Node-1"
             })
         });
-        if (!response.ok) throw new Error("Failed to update sensor states");
-        return response.json();
     },
 
     /**
      * Trigger simulated AI detection (fire/smoke/human)
      */
     async triggerAIDetect(data) {
-        const response = await fetch(`${API_BASE_URL}/api/ai/detect`, {
+        return request(`${API_BASE_URL}/api/ai/detect`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
             body: JSON.stringify({
                 fire: data.fire || false,
                 smoke: data.smoke || false,
@@ -225,85 +226,117 @@ export const api = {
                 bbox: data.bbox || null
             })
         });
-        if (!response.ok) throw new Error("Failed to update AI detection");
-        return response.json();
     },
 
     /**
      * Get MQTT status
      */
     async getMQTTStatus() {
-        const response = await fetch(`${API_BASE_URL}/api/mqtt/status`);
-        if (!response.ok) throw new Error("Failed to fetch MQTT status");
-        return response.json();
+        return request(`${API_BASE_URL}/api/mqtt/status`);
     },
 
     /**
      * Get Sprinkler status
      */
     async getSprinklerStatus() {
-        const response = await fetch(`${API_BASE_URL}/api/sprinkler/status`);
-        if (!response.ok) throw new Error("Failed to fetch Sprinkler status");
-        return response.json();
+        return request(`${API_BASE_URL}/api/sprinkler/status`);
     },
 
     /**
      * Start automatic face watching worker
      */
     async startFaceWatch() {
-        const response = await fetch(`${API_BASE_URL}/api/faces/watch/start`, {
+        return request(`${API_BASE_URL}/api/faces/watch/start`, {
             method: "POST"
         });
-        if (!response.ok) throw new Error("Failed to start face watch worker");
-        return response.json();
     },
 
     /**
      * Stop automatic face watching worker
      */
     async stopFaceWatch() {
-        const response = await fetch(`${API_BASE_URL}/api/faces/watch/stop`, {
+        return request(`${API_BASE_URL}/api/faces/watch/stop`, {
             method: "POST"
         });
-        if (!response.ok) throw new Error("Failed to stop face watch worker");
-        return response.json();
     },
 
     /**
      * Get automatic face watching worker status
      */
     async getFaceWatchStatus() {
-        const response = await fetch(`${API_BASE_URL}/api/faces/watch/status`);
-        if (!response.ok) throw new Error("Failed to fetch face watch status");
-        return response.json();
+        return request(`${API_BASE_URL}/api/faces/watch/status`);
     },
 
     /**
      * Get notifications logs
      */
     async getNotifications() {
-        const response = await fetch(`${API_BASE_URL}/api/notifications`);
-        if (!response.ok) throw new Error("Failed to fetch notifications");
-        return response.json();
+        return request(`${API_BASE_URL}/api/notifications`);
     },
 
     /**
      * Get unread notifications count
      */
     async getUnreadNotificationCount() {
-        const response = await fetch(`${API_BASE_URL}/api/notifications/unread-count`);
-        if (!response.ok) throw new Error("Failed to fetch unread notification count");
-        return response.json();
+        return request(`${API_BASE_URL}/api/notifications/unread-count`);
     },
 
     /**
      * Mark a specific notification as read
      */
     async markNotificationAsRead(eventId) {
-        const response = await fetch(`${API_BASE_URL}/api/notifications/${eventId}/read`, {
+        return request(`${API_BASE_URL}/api/notifications/${eventId}/read`, {
             method: "POST"
         });
-        if (!response.ok) throw new Error("Failed to mark notification as read");
-        return response.json();
+    },
+
+    // --- Authentication & User Management APIs ---
+
+    async login(username, password) {
+        return request(`${API_BASE_URL}/api/auth/login`, {
+            method: "POST",
+            body: JSON.stringify({ username, password })
+        });
+    },
+
+    async logout() {
+        return request(`${API_BASE_URL}/api/auth/logout`, {
+            method: "POST"
+        });
+    },
+
+    async getMe() {
+        return request(`${API_BASE_URL}/api/auth/me`);
+    },
+
+    async changePassword(oldPassword, newPassword) {
+        return request(`${API_BASE_URL}/api/auth/change-password`, {
+            method: "POST",
+            body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+        });
+    },
+
+    async getUsers() {
+        return request(`${API_BASE_URL}/api/users`);
+    },
+
+    async createUser(username, password, fullName, role) {
+        return request(`${API_BASE_URL}/api/users`, {
+            method: "POST",
+            body: JSON.stringify({ username, password, full_name: fullName, role })
+        });
+    },
+
+    async updateUser(userId, fullName, role, password = null) {
+        return request(`${API_BASE_URL}/api/users/${userId}`, {
+            method: "PUT",
+            body: JSON.stringify({ full_name: fullName, role, password })
+        });
+    },
+
+    async deleteUser(userId) {
+        return request(`${API_BASE_URL}/api/users/${userId}`, {
+            method: "DELETE"
+        });
     }
 };
