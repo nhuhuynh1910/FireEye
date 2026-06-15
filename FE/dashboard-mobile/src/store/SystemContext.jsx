@@ -10,7 +10,7 @@ export const SystemProvider = ({ children }) => {
     const [isBackendConnected, setIsBackendConnected] = useState(false);
     
     // Dynamic IP Config
-    const [raspberryPiIp, setRaspberryPiIp] = useState("192.168.1.45");
+    const [raspberryPiIp, setRaspberryPiIp] = useState(process.env.EXPO_PUBLIC_BACKEND_IP || "192.168.100.174");
 
     // Sync base URL dynamically when IP changes
     useEffect(() => {

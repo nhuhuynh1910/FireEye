@@ -126,6 +126,17 @@ class CameraService:
         return cv2.VideoCapture(self.camera_url, cv2.CAP_FFMPEG)
 
     def _send_ptz_command(self, action, code, speed=4):
+        # Đảo chiều hướng di chuyển khi camera lắp ngược trên trần nhà (180 độ)
+        if CAMERA_PHYSICAL_ROTATION == 180:
+            if code == "Left":
+                code = "Right"
+            elif code == "Right":
+                code = "Left"
+            elif code == "Up":
+                code = "Down"
+            elif code == "Down":
+                code = "Up"
+
         url = (
             f"{self.base_url}/cgi-bin/ptz.cgi?"
             f"action={action}"
@@ -195,12 +206,23 @@ class CameraService:
         return self._send_ptz_command("stop", ptz_code, 0)
 
     def goto_preset(self, preset_id):
-        # API PTZ Dahua: action=locate&code=Preset&arg1=0&arg2=preset_id&arg3=0
-        # Tốc độ ở đây được truyền vào arg2, nên truyền preset_id làm speed.
-        return self._send_ptz_command("locate", "Preset", preset_id)
+        # API PTZ Dahua: action=start&code=GotoPreset&arg1=0&arg2=preset_id&arg3=0
+        return self._send_ptz_command("start", "GotoPreset", preset_id)
+
+    def reboot_camera(self):
+        url = f"{self.base_url}/cgi-bin/magicBox.cgi?action=reboot"
+        try:
+            response = requests.get(url, auth=self.auth, timeout=3)
+            print("CAMERA REBOOT STATUS:", response.status_code)
+            print("CAMERA REBOOT RESPONSE:", response.text)
+            return response.status_code == 200 and "OK" in response.text
+        except Exception as e:
+            print(f"Lỗi gọi API reboot camera: {e}")
+            return False
 
     def go_home(self):
-        # Sử dụng Preset Home (Preset 5) nếu thành công
+        # 1. Di chuyển trực tiếp về Preset Home (Preset 5 - vị trí 90 độ đã được lưu)
+        print(f"Di chuyển camera về Preset Home ({HOME_PRESET})")
         ok = self.goto_preset(HOME_PRESET)
         if ok:
             return {
@@ -210,8 +232,42 @@ class CameraService:
                 "mode": "preset"
             }
 
-        # Fallback về timed timed movement nếu thất bại
-        print("Gọi preset Home thất bại, quay về phương thức timed movement.")
+        # 2. Fallback 1: Thử sử dụng lệnh goHome gốc của Dahua
+        print("Di chuyển về Preset Home thất bại, thử gọi native goHome.")
+        url = f"{self.base_url}/cgi-bin/ptz.cgi?action=goHome&channel={self.channel}"
+        try:
+            response = requests.get(url, auth=self.auth, timeout=3)
+            print("PTZ NATIVE goHome URL:", url)
+            print("PTZ NATIVE goHome STATUS:", response.status_code)
+            print("PTZ NATIVE goHome RESPONSE:", response.text)
+            if response.status_code == 200 and ("OK" in response.text or "ok" in response.text.lower()):
+                return {
+                    "success": True,
+                    "action": "goHome",
+                    "mode": "firmware_home"
+                }
+        except Exception as e:
+            print(f"Lỗi gọi API native goHome: {e}")
+
+        # 3. Fallback 2: Thử sử dụng lệnh PowerOnSelfTest qua ptz.cgi của Dahua
+        print("Gọi native goHome thất bại, thử gọi PowerOnSelfTest.")
+        url = f"{self.base_url}/cgi-bin/ptz.cgi?action=custom&code=PowerOnSelfTest&channel={self.channel}"
+        try:
+            response = requests.get(url, auth=self.auth, timeout=3)
+            print("PTZ SELF-TEST URL:", url)
+            print("PTZ SELF-TEST STATUS:", response.status_code)
+            print("PTZ SELF-TEST RESPONSE:", response.text)
+            if response.status_code == 200 and ("OK" in response.text or "ok" in response.text.lower()):
+                return {
+                    "success": True,
+                    "action": "PowerOnSelfTest",
+                    "mode": "firmware_self_test"
+                }
+        except Exception as e:
+            print(f"Lỗi gọi API PTZ PowerOnSelfTest: {e}")
+
+        # 4. Fallback 3: Quay về phương thức timed movement nếu tất cả các cách trên đều thất bại
+        print("Tất cả các lệnh PTZ home thất bại, quay về phương thức timed movement.")
         results = []
 
         ok1 = self._move_for_seconds(
@@ -243,6 +299,19 @@ class CameraService:
             "action": "home_manual",
             "mode": "manual_timed_move_fallback",
             "moves": results
+        }
+
+    def set_preset(self, preset_id):
+        # API PTZ Dahua: action=start&code=SetPreset&arg1=0&arg2=preset_id&arg3=0
+        return self._send_ptz_command("start", "SetPreset", preset_id)
+
+    def set_home(self):
+        print(f"Lưu vị trí camera hiện tại làm Preset Home ({HOME_PRESET})")
+        ok = self.set_preset(HOME_PRESET)
+        return {
+            "success": ok,
+            "action": "set_home_preset",
+            "preset_id": HOME_PRESET
         }
 
     def goto_zone(self, zone_id):

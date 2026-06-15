@@ -34,7 +34,7 @@ SERVER_PORT = 8000
 DEBUG = True
 
 # Camera Dahua LAN
-CAMERA_IP = os.getenv("CAMERA_IP", "10.10.10.2")
+CAMERA_IP = os.getenv("CAMERA_IP", "192.168.1.108")
 CAMERA_USERNAME = os.getenv("CAMERA_USERNAME", "admin")   
 CAMERA_PASSWORD = os.getenv("CAMERA_PASSWORD", "L2D710CD")
 
@@ -67,8 +67,8 @@ HOME_PRESET = 5
 ZONE_CONFIG = {
     1: {"name": "Zone 1", "pan_angle": -45, "tilt_angle": 0, "preset": 1},
     2: {"name": "Zone 2", "pan_angle": 45, "tilt_angle": 0, "preset": 2},
-    3: {"name": "Zone 3", "pan_angle": -135, "tilt_angle": 0, "preset": 3},
-    4: {"name": "Zone 4", "pan_angle": 135, "tilt_angle": 0, "preset": 4}
+    3: {"name": "Zone 3", "pan_angle": 135, "tilt_angle": 0, "preset": 4},
+    4: {"name": "Zone 4", "pan_angle": -135, "tilt_angle": 0, "preset": 3}
 }
 
 # ==========================
@@ -76,10 +76,14 @@ ZONE_CONFIG = {
 # ==========================
 
 ESP32_SENSOR_TOPIC_TO_ZONE = {
-    "esp32c3_1/sensor": 1
+    "esp32c3_1/sensor": 1,
+    "esp32c3_2/sensor": 2,
+    "esp32c3_3/sensor": 3,
+    "esp32c3_4/sensor": 4,
 }
 
 GAS_THRESHOLD_LOW = 600
+TEMP_THRESHOLD = 50.0
 
 # Cấu hình xoay camera vật lý (0, 90, 180, 270)
 try:

@@ -37,7 +37,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(status_router)
 app.include_router(camera_router)
-app.include_router(sensor_role_router if 'sensor_role_router' in globals() else sensor_router)
+app.include_router(sensor_router)
 app.include_router(ai_router)
 app.include_router(ptz_router)
 app.include_router(mqtt_router)

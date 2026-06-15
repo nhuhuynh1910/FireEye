@@ -68,6 +68,24 @@ export const DashboardScreen = () => {
     const [eventLogs, setEventLogs] = useState([]);
     const [isRefreshingEvents, setIsRefreshingEvents] = useState(false);
 
+    // Rotation state
+    const [rotation, setRotation] = useState(0);
+
+    const handleRotate = () => {
+        setRotation(prev => (prev + 90) % 360);
+    };
+
+    // Face database states
+    const [regName, setRegName] = useState("");
+    const [regRole, setRegRole] = useState("Operator");
+    const [regFile, setRegFile] = useState(null);
+    const [isRegistering, setIsRegistering] = useState(false);
+    const [regStatus, setRegStatus] = useState({ success: null, message: "" });
+    const [verResult, setVerResult] = useState(null);
+    const [isVerifying, setIsVerifying] = useState(false);
+    const [people, setPeople] = useState([]);
+    const [isLoadingPeople, setIsLoadingPeople] = useState(false);
+
     // Settings local simulator states
     const [simSmoke, setSimSmoke] = useState(12);
     const [simFlame, setSimFlame] = useState(8);
@@ -138,6 +156,96 @@ export const DashboardScreen = () => {
             loadEventLogs(false);
         }
     }, [activeTab]);
+
+    const loadPeople = useCallback(async () => {
+        setIsLoadingPeople(true);
+        try {
+            const res = await api.getPeople();
+            if (res && res.success) {
+                setPeople(res.data);
+            }
+        } catch (err) {
+            console.error("Failed to load registered people in mobile:", err);
+        } finally {
+            setIsLoadingPeople(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === 'faces') {
+            loadPeople();
+        }
+    }, [activeTab, loadPeople]);
+
+    const handleRegisterSubmit = async () => {
+        if (!regName) {
+            setRegStatus({ success: false, message: "Vui lòng nhập tên." });
+            return;
+        }
+        setIsRegistering(true);
+        setRegStatus({ success: null, message: "" });
+        
+        // Mock image file if none is chosen
+        const fileToUpload = regFile || {
+            uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80',
+            name: 'default_operator.jpg',
+            type: 'image/jpeg'
+        };
+
+        try {
+            const res = await api.registerFace(regName, regRole, fileToUpload);
+            if (res && res.success) {
+                setRegStatus({ success: true, message: "Đăng ký gương mặt thành công!" });
+                setRegName("");
+                setRegFile(null);
+                loadPeople();
+            } else {
+                setRegStatus({ success: false, message: res?.message || "Đăng ký thất bại." });
+            }
+        } catch (err) {
+            console.error("Register face error:", err);
+            setRegStatus({ success: false, message: "Lỗi kết nối tới backend." });
+        } finally {
+            setIsRegistering(false);
+        }
+    };
+
+    const handleCameraVerify = async () => {
+        setIsVerifying(true);
+        setVerResult(null);
+        try {
+            const res = await api.matchCameraFace();
+            if (res && res.success) {
+                setVerResult(res);
+            } else {
+                alert(res?.message || "Không thể thực hiện đối khớp qua camera.");
+            }
+        } catch (err) {
+            console.error("Camera verify error:", err);
+            alert("Lỗi kết nối tới backend.");
+        } finally {
+            setIsVerifying(false);
+        }
+    };
+
+    const handleFileVerify = async (file) => {
+        if (!file) return;
+        setIsVerifying(true);
+        setVerResult(null);
+        try {
+            const res = await api.matchFaceImage(file);
+            if (res && res.success) {
+                setVerResult(res);
+            } else {
+                alert(res?.message || "Không tìm thấy gương mặt.");
+            }
+        } catch (err) {
+            console.error("File verify error:", err);
+            alert("Lỗi kết nối tới backend.");
+        } finally {
+            setIsVerifying(false);
+        }
+    };
 
     // Bounding Box layout calculations
     const showLive = isBackendConnected && isCameraOnline && activeCameraId === 1;
@@ -288,14 +396,14 @@ export const DashboardScreen = () => {
 
             {/* TAB SELECTOR */}
             <View style={styles.tabBar}>
-                {['dashboard', 'events', 'settings'].map(tab => (
+                {['dashboard', 'faces', 'events', 'settings'].map(tab => (
                     <Pressable
                         key={tab}
                         style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
                         onPress={() => setActiveTab(tab)}
                     >
                         <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                            {tab.toUpperCase()}
+                            {tab === 'faces' ? 'FACE DB' : tab.toUpperCase()}
                         </Text>
                     </Pressable>
                 ))}
@@ -336,9 +444,23 @@ export const DashboardScreen = () => {
                                 <View style={styles.liveStreamWrapper}>
                                     <Image
                                         source={{ uri: `${api.getStreamUrl()}?t=${Date.now()}` }}
-                                        style={styles.streamFeedImage}
+                                        style={[
+                                            styles.streamFeedImage,
+                                            {
+                                                transform: [
+                                                    { rotate: `${rotation}deg` },
+                                                    { scale: (rotation === 90 || rotation === 270) ? 0.5625 : 1 }
+                                                ]
+                                            }
+                                        ]}
                                         resizeMode="contain"
                                     />
+                                    <Pressable 
+                                        style={styles.hudRotateBtn}
+                                        onPress={handleRotate}
+                                    >
+                                        <Text style={styles.hudRotateBtnText}>🔄 ROTATE {rotation}°</Text>
+                                    </Pressable>
                                     {/* YOLOv8 VISION HUD OVERLAY */}
                                     <View style={styles.hudOverlay} pointerEvents="none">
                                         {/* Bounding Box Drawing */}
@@ -527,6 +649,302 @@ export const DashboardScreen = () => {
                                 </View>
                             </View>
                         </View>
+                    </View>
+                </ScrollView>
+            )}
+
+            {activeTab === 'faces' && (
+                <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+                    {/* Face Watcher service controller */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>REAL-TIME FACE WATCHER SERVICE</Text>
+                        <View style={styles.switchRow}>
+                            <View style={{ flex: 1, marginRight: 10 }}>
+                                <Text style={styles.switchLabel}>AUTO FACE RECOGNITION</Text>
+                                <Text style={styles.settingsDesc}>Scan camera frames every 3s for matching</Text>
+                            </View>
+                            <Pressable 
+                                style={[styles.toggleBtn, faceWatchActive ? styles.toggleBtnOn : styles.toggleBtnOff]}
+                                onPress={toggleFaceWatch}
+                            >
+                                <Text style={styles.toggleBtnText}>{faceWatchActive ? "RUNNING" : "STOPPED"}</Text>
+                            </Pressable>
+                        </View>
+                        <Text style={styles.fieldLabel}>
+                            Service Status: <Text style={{ color: faceWatchActive ? colors.accentGreen : colors.accentRed, fontWeight: 'bold' }}>{faceWatchActive ? 'RUNNING' : 'STOPPED'}</Text>
+                        </Text>
+                    </View>
+
+                    {/* Face verification HUD */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>FACE VERIFICATION HUD</Text>
+                        
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                            <Pressable 
+                                style={[styles.submitBtn, { flex: 1, marginTop: 0 }]}
+                                onPress={handleCameraVerify}
+                                disabled={isVerifying}
+                            >
+                                <Text style={styles.submitBtnText}>
+                                    {isVerifying ? "SCANNING LIVE FEED..." : "SCAN DAHUA CAMERA"}
+                                </Text>
+                            </Pressable>
+                        </View>
+
+                        <Text style={{ textAlign: 'center', marginVertical: 8, fontSize: 8, color: colors.textMuted, fontFamily: 'monospace' }}>
+                            OR UPLOAD SNAPSHOT
+                        </Text>
+
+                        {/* Preset options */}
+                        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+                            <Pressable 
+                                style={[styles.adjusterBtn, regFile && regFile.name === 'employee_verified.jpg' && { borderColor: colors.accentCyan }]}
+                                onPress={() => {
+                                    const mockFile = {
+                                        uri: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=300&h=300&q=80',
+                                        name: 'employee_verified.jpg',
+                                        type: 'image/jpeg'
+                                    };
+                                    setRegFile(mockFile);
+                                    handleFileVerify(mockFile);
+                                }}
+                            >
+                                <Text style={styles.adjusterBtnText}>MOCK FACE A</Text>
+                            </Pressable>
+                            <Pressable 
+                                style={[styles.adjusterBtn, regFile && regFile.name === 'stranger_detected.jpg' && { borderColor: colors.accentCyan }]}
+                                onPress={() => {
+                                    const mockFile = {
+                                        uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80',
+                                        name: 'stranger_detected.jpg',
+                                        type: 'image/jpeg'
+                                    };
+                                    setRegFile(mockFile);
+                                    handleFileVerify(mockFile);
+                                }}
+                            >
+                                <Text style={styles.adjusterBtnText}>MOCK FACE B</Text>
+                            </Pressable>
+                        </View>
+
+                        {/* Verification Image Preview with Bounding Box overlays */}
+                        {verResult && (
+                            <View style={styles.verificationResultBox}>
+                                <Text style={styles.verificationResultTitle}>
+                                    VERIFICATION RESULTS ({verResult.faces_detected} DETECTED)
+                                </Text>
+                                
+                                {verResult.snapshot && (
+                                    <View style={styles.verificationPhotoPane}>
+                                        <Image 
+                                            source={{ uri: `${api.getBaseUrl()}${verResult.snapshot}` }} 
+                                            style={styles.verificationImage}
+                                            resizeMode="cover"
+                                        />
+                                        
+                                        {/* Overlay bounding boxes */}
+                                        {verResult.results.map((face, index) => {
+                                            if (!face.bbox) return null;
+                                            const [x1, y1, x2, y2] = face.bbox;
+                                            const boxL = (x1 / 960) * 100;
+                                            const boxT = (y1 / 540) * 100;
+                                            const boxW = ((x2 - x1) / 960) * 100;
+                                            const boxH = ((y2 - y1) / 540) * 100;
+                                            const isMatched = face.matched;
+                                            const strokeColor = isMatched ? colors.accentCyan : colors.accentRed;
+                                            
+                                            return (
+                                                <View
+                                                    key={index}
+                                                    style={{
+                                                        position: 'absolute',
+                                                        borderWidth: 2,
+                                                        borderColor: strokeColor,
+                                                        left: `${boxL}%`,
+                                                        top: `${boxT}%`,
+                                                        width: `${boxW}%`,
+                                                        height: `${boxH}%`,
+                                                    }}
+                                                >
+                                                    <View style={{
+                                                        position: 'absolute',
+                                                        top: -12,
+                                                        left: -2,
+                                                        backgroundColor: strokeColor,
+                                                        paddingHorizontal: 3,
+                                                        paddingVertical: 1,
+                                                        borderRadius: 2,
+                                                    }}>
+                                                        <Text style={{
+                                                            color: '#000',
+                                                            fontWeight: '900',
+                                                            fontSize: 6,
+                                                            fontFamily: 'monospace'
+                                                        }}>
+                                                            {face.name} {(face.confidence * 100).toFixed(0)}%
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            );
+                                        })}
+                                    </View>
+                                )}
+
+                                <View style={{ marginTop: 8, gap: 4 }}>
+                                    {verResult.results.map((face, idx) => (
+                                        <View
+                                            key={idx}
+                                            style={[
+                                                styles.verResultRow,
+                                                { borderLeftColor: face.matched ? colors.accentCyan : colors.accentRed }
+                                            ]}
+                                        >
+                                            <Text style={styles.verResultText}>
+                                                {face.name} ({face.role || 'N/A'})
+                                            </Text>
+                                            <Text style={[styles.verResultStatus, { color: face.matched ? colors.accentCyan : colors.accentRed }]}>
+                                                {face.matched ? 'AUTHORIZED' : 'UNKNOWN'} ({(face.confidence * 100).toFixed(0)}%)
+                                            </Text>
+                                        </View>
+                                    ))}
+                                    {verResult.results.length === 0 && (
+                                        <Text style={{ fontSize: 9, color: colors.accentRed, fontFamily: 'monospace', textAlign: 'center' }}>
+                                            NO FACES DETECTED IN CAMERA SCOPE
+                                        </Text>
+                                    )}
+                                </View>
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Register Authorized Personnel form */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>REGISTER AUTHORIZED PERSONNEL</Text>
+                        
+                        <Text style={styles.fieldLabel}>NAME</Text>
+                        <TextInput
+                            style={styles.textField}
+                            placeholder="Type employee/guest name..."
+                            placeholderTextColor={colors.textMuted}
+                            value={regName}
+                            onChangeText={setRegName}
+                            disabled={isRegistering}
+                        />
+
+                        <Text style={styles.fieldLabel}>ROLE</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                            {['Operator', 'Security Officer', 'Plant Supervisor', 'Guest Visitor'].map(roleOption => (
+                                <Pressable
+                                    key={roleOption}
+                                    style={[
+                                        styles.roleSelectBtn,
+                                        regRole === roleOption && styles.roleSelectBtnActive
+                                    ]}
+                                    onPress={() => setRegRole(roleOption)}
+                                    disabled={isRegistering}
+                                >
+                                    <Text style={[
+                                        styles.roleSelectBtnText,
+                                        regRole === roleOption && styles.roleSelectBtnTextActive
+                                    ]}>
+                                        {roleOption}
+                                    </Text>
+                                </Pressable>
+                            ))}
+                        </View>
+
+                        <Text style={styles.fieldLabel}>PORTRAIT PHOTO</Text>
+                        <Pressable 
+                            style={styles.portraitPhotoSelector}
+                            onPress={() => {
+                                const mockPhoto = {
+                                    uri: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&h=150&q=80',
+                                    name: 'reg_personnel.jpg',
+                                    type: 'image/jpeg'
+                                };
+                                setRegFile(mockPhoto);
+                            }}
+                            disabled={isRegistering}
+                        >
+                            <Text style={styles.portraitSelectorIcon}>📷</Text>
+                            <Text style={styles.portraitSelectorText}>
+                                {regFile ? regFile.name : "Tap to select mock portrait photo"}
+                            </Text>
+                        </Pressable>
+
+                        {regStatus.message ? (
+                            <View style={[
+                                styles.regStatusBox,
+                                {
+                                    borderColor: regStatus.success ? colors.accentCyan : colors.accentRed,
+                                    backgroundColor: regStatus.success ? 'rgba(255, 94, 54, 0.05)' : 'rgba(255, 59, 48, 0.05)'
+                                }
+                            ]}>
+                                <Text style={[
+                                    styles.regStatusText,
+                                    { color: regStatus.success ? colors.accentCyan : colors.accentRed }
+                                ]}>
+                                    {regStatus.message}
+                                </Text>
+                            </View>
+                        ) : null}
+
+                        <Pressable
+                            style={[styles.submitBtn, { marginTop: 12 }]}
+                            onPress={handleRegisterSubmit}
+                            disabled={isRegistering}
+                        >
+                            <Text style={styles.submitBtnText}>
+                                {isRegistering ? "COMMITING..." : "COMMIT REGISTRATION"}
+                            </Text>
+                        </Pressable>
+                    </View>
+
+                    {/* Registered personnel roster database */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>REGISTERED PERSONNEL DATABASE</Text>
+                        
+                        {isLoadingPeople ? (
+                            <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                                <ActivityIndicator size="small" color={colors.accentCyan} />
+                                <Text style={{ fontSize: 9, color: colors.textSecondary, fontFamily: 'monospace', marginTop: 4 }}>
+                                    QUERYING SQL SECURE ROSTER...
+                                </Text>
+                            </View>
+                        ) : (
+                            <View style={styles.rosterContainer}>
+                                {people.map(person => (
+                                    <View key={person.id} style={styles.rosterItemCard}>
+                                        <View style={styles.rosterAvatarWrapper}>
+                                            {person.avatar_path ? (
+                                                <Image 
+                                                    source={{ uri: `${api.getBaseUrl()}${person.avatar_path}` }}
+                                                    style={styles.rosterAvatar}
+                                                    resizeMode="cover"
+                                                />
+                                            ) : (
+                                                <View style={styles.rosterAvatarFallback}>
+                                                    <Text style={styles.rosterAvatarFallbackText}>
+                                                        {person.name.substring(0, 2).toUpperCase()}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                        <Text style={styles.rosterItemName} numberOfLines={1}>
+                                            {person.name}
+                                        </Text>
+                                        <Text style={styles.rosterItemRole} numberOfLines={1}>
+                                            {person.role}
+                                        </Text>
+                                    </View>
+                                ))}
+                                {people.length === 0 && (
+                                    <Text style={{ fontSize: 9, fontStyle: 'italic', color: colors.textMuted, textAlign: 'center', width: '100%' }}>
+                                        Roster empty. Register personnel using the form.
+                                    </Text>
+                                )}
+                            </View>
+                        )}
                     </View>
                 </ScrollView>
             )}
@@ -2021,5 +2439,183 @@ const styles = StyleSheet.create({
         width: 1,
         height: 20,
         backgroundColor: colors.borderColor,
+    },
+    hudRotateBtn: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        zIndex: 30,
+        backgroundColor: 'rgba(10, 25, 47, 0.85)',
+        borderColor: colors.accentCyan,
+        borderWidth: 1,
+        borderRadius: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    hudRotateBtnText: {
+        color: colors.accentCyan,
+        fontSize: 8,
+        fontWeight: 'bold',
+        fontFamily: 'monospace',
+    },
+    verificationResultBox: {
+        marginTop: 12,
+        padding: 10,
+        borderColor: colors.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        backgroundColor: 'rgba(6, 10, 19, 0.3)',
+    },
+    verificationResultTitle: {
+        fontSize: 9,
+        color: colors.accentCyan,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+        marginBottom: 8,
+    },
+    verificationPhotoPane: {
+        width: '100%',
+        aspectRatio: 16 / 9,
+        backgroundColor: '#000',
+        borderRadius: 4,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    verificationImage: {
+        width: '100%',
+        height: '100%',
+    },
+    verResultRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+        borderRadius: 4,
+        borderLeftWidth: 3,
+        marginTop: 4,
+    },
+    verResultText: {
+        fontSize: 9,
+        color: colors.textPrimary,
+        fontFamily: 'monospace',
+    },
+    verResultStatus: {
+        fontSize: 9,
+        fontWeight: 'bold',
+        fontFamily: 'monospace',
+    },
+    roleSelectBtn: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    },
+    roleSelectBtnActive: {
+        borderColor: colors.accentCyan,
+        backgroundColor: 'rgba(255, 94, 54, 0.08)',
+    },
+    roleSelectBtnText: {
+        fontSize: 8,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+    },
+    roleSelectBtnTextActive: {
+        color: colors.textPrimary,
+        fontWeight: 'bold',
+    },
+    portraitPhotoSelector: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+        borderStyle: 'dashed',
+        borderRadius: 4,
+        paddingVertical: 14,
+        marginTop: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.01)',
+    },
+    portraitSelectorIcon: {
+        fontSize: 16,
+        marginRight: 6,
+    },
+    portraitSelectorText: {
+        fontSize: 9,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+    },
+    regStatusBox: {
+        padding: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        marginTop: 10,
+    },
+    regStatusText: {
+        fontSize: 9,
+        fontFamily: 'monospace',
+        textAlign: 'center',
+    },
+    rosterContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginTop: 8,
+    },
+    rosterItemCard: {
+        width: '48%',
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+        borderColor: colors.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        padding: 8,
+        alignItems: 'center',
+    },
+    rosterAvatarWrapper: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        overflow: 'hidden',
+        backgroundColor: colors.bgDeep,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 6,
+    },
+    rosterAvatar: {
+        width: '100%',
+        height: '100%',
+    },
+    rosterAvatarFallback: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(255, 94, 54, 0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    rosterAvatarFallbackText: {
+        color: colors.accentCyan,
+        fontSize: 12,
+        fontWeight: 'bold',
+        fontFamily: 'monospace',
+    },
+    rosterItemName: {
+        fontSize: 9,
+        fontWeight: 'bold',
+        color: colors.textPrimary,
+        fontFamily: 'monospace',
+        textAlign: 'center',
+    },
+    rosterItemRole: {
+        fontSize: 7,
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+        textAlign: 'center',
+        marginTop: 2,
     },
 });

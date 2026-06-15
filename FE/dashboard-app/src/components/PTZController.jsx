@@ -4,7 +4,7 @@ import { useSystem } from '../store/SystemContext';
 import { api } from '../services/api';
 
 export const PTZController = () => {
-    const { activeCameraId, isCameraOnline } = useSystem();
+    const { activeCameraId, isCameraOnline, setAutoScanActive } = useSystem();
 
     const cameraNames = {
         1: "Front Gate",
@@ -20,6 +20,7 @@ export const PTZController = () => {
             console.warn(`PTZ [${action}] ignored: Live camera (Front Gate) is offline.`);
             return;
         }
+        setAutoScanActive(false); // Disable auto-scan when user manually pans/tilts
         try {
             await api.sendPTZCommand(action);
         } catch (err) {

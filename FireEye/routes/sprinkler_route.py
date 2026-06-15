@@ -20,16 +20,4 @@ def accept_sprinkler(zone_id: int):
 
 @router.post("/api/sprinkler/zone/{zone_id}/reject")
 def reject_sprinkler(zone_id: int):
-    motor_result = mqtt_service.publish_motor_zone(zone_id, 0)
-
-    mqtt_service.reset_active_zone()
-
-    camera_result = camera_service.go_home()
-
-    return {
-        "success": True,
-        "zone_id": zone_id,
-        "action": "sprinkler_rejected",
-        "motor": motor_result,
-        "camera": camera_result
-    }
+    return mqtt_service.reject_alert(zone_id)

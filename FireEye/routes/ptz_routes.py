@@ -65,6 +65,11 @@ def camera_zone(zone_id: int):
 def camera_home():
     return camera_service.go_home()
 
+
+@router.post("/api/camera/set-home")
+def camera_set_home():
+    return camera_service.set_home()
+
 @router.get("/api/camera/zones")
 def get_camera_zones():
     return {

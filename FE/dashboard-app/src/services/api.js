@@ -1,8 +1,7 @@
 /* services/api.js */
 
-const API_BASE_URL = typeof window !== 'undefined' 
-    ? `http://${window.location.hostname}:8000` 
-    : "http://127.0.0.1:8000";
+const BACKEND_IP = import.meta.env.VITE_BACKEND_IP || (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1');
+const API_BASE_URL = `http://${BACKEND_IP}:8000`;
 
 export const api = {
     /**
@@ -88,6 +87,17 @@ export const api = {
     },
 
     /**
+     * Save current camera position as the home preset
+     */
+    async setHome() {
+        const response = await fetch(`${API_BASE_URL}/api/camera/set-home`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error("Failed to save camera home");
+        return response.json();
+    },
+
+    /**
      * Control the sprinkler state (ON / OFF)
      */
     async controlSprinkler(action) {
@@ -99,6 +109,22 @@ export const api = {
             body: JSON.stringify({ action })
         });
         if (!response.ok) throw new Error(`Failed to set sprinkler to ${action}`);
+        return response.json();
+    },
+
+    async acceptSprinkler(zoneId) {
+        const response = await fetch(`${API_BASE_URL}/api/sprinkler/zone/${zoneId}/accept`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error(`Failed to accept sprinkler for zone ${zoneId}`);
+        return response.json();
+    },
+
+    async rejectSprinkler(zoneId) {
+        const response = await fetch(`${API_BASE_URL}/api/sprinkler/zone/${zoneId}/reject`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error(`Failed to reject sprinkler for zone ${zoneId}`);
         return response.json();
     },
 

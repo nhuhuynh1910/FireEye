@@ -2,6 +2,7 @@ import time
 import cv2
 import numpy as np
 import requests
+import os
 from collections import deque
 
 from hailo_platform import (
@@ -9,10 +10,33 @@ from hailo_platform import (
     InferVStreams, InputVStreamParams, OutputVStreamParams, FormatType
 )
 
+# Manual dotenv loader matching settings.py
+def load_dotenv(dotenv_path=".env"):
+    if os.path.exists(dotenv_path):
+        try:
+            with open(dotenv_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split("=", 1)
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        val = parts[1].strip().strip('"').strip("'")
+                        os.environ[key] = val
+        except Exception as e:
+            print(f"Error loading .env file: {e}")
+
+load_dotenv()
+
 HEF_PATH = "best.hef"
 
+CAMERA_IP = os.getenv("CAMERA_IP", "192.168.1.108")
+CAMERA_USERNAME = os.getenv("CAMERA_USERNAME", "admin")   
+CAMERA_PASSWORD = os.getenv("CAMERA_PASSWORD", "L2D710CD")
+
 RTSP_URL = (
-    "rtsp://admin:L2D710CD@10.10.10.2:554/"
+    f"rtsp://{CAMERA_USERNAME}:{CAMERA_PASSWORD}@{CAMERA_IP}:554/"
     "cam/realmonitor?channel=1&subtype=0"
 )
 

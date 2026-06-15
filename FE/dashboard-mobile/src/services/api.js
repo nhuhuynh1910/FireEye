@@ -1,7 +1,7 @@
 /* services/api.js - Mobile API Handler */
 
 // Default Raspberry Pi IP (can be updated dynamically from Settings)
-let RASPBERRY_PI_IP = "192.168.1.45"; 
+let RASPBERRY_PI_IP = process.env.EXPO_PUBLIC_BACKEND_IP || "192.168.100.174"; 
 let API_BASE_URL = `http://${RASPBERRY_PI_IP}:8000`;
 
 export const api = {

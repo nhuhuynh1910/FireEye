@@ -6,9 +6,8 @@ import { TelemetrySidebar } from './components/TelemetrySidebar';
 import logoImg from './assets/image-removebg-preview.jpg';
 import './App.css';
 
-const API_BASE_URL = typeof window !== 'undefined'
-    ? `http://${window.location.hostname}:8000`
-    : "http://127.0.0.1:8000";
+const BACKEND_IP = import.meta.env.VITE_BACKEND_IP || (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1');
+const API_BASE_URL = `http://${BACKEND_IP}:8000`;
 
 const MainLayout = () => {
     const {
@@ -56,6 +55,12 @@ const MainLayout = () => {
                         onClick={() => setActiveTab('dashboard')}
                     >
                         Dashboard
+                    </button>
+                    <button
+                        className={`nav-tab-btn ${activeTab === 'faces' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('faces')}
+                    >
+                        Face Database
                     </button>
                     <button
                         className={`nav-tab-btn ${activeTab === 'events' ? 'active' : ''}`}

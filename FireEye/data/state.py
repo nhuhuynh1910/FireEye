@@ -93,6 +93,32 @@ def get_sprinkler_state():
     return sprinkler_state
 
 
+zone_states = {
+    1: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None},
+    2: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None},
+    3: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None},
+    4: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None}
+}
+
+
+def update_zone_state(zone_id, temperature, humidity, gas, pump, buzzer, mode):
+    if zone_id in zone_states:
+        zone_states[zone_id] = {
+            "temperature": temperature,
+            "humidity": humidity,
+            "gas": gas,
+            "pump": pump,
+            "buzzer": buzzer,
+            "mode": mode,
+            "lastUpdated": now()
+        }
+    return zone_states.get(zone_id)
+
+
+def get_zone_states():
+    return zone_states
+
+
 def get_overall_status():
     if sensor_state["alertLevel"] == "danger" or ai_state["alertLevel"] == "danger":
         level = "danger"
@@ -106,5 +132,6 @@ def get_overall_status():
         "overallAlertLevel": level,
         "sensor": sensor_state,
         "ai": ai_state,
-        "sprinkler": sprinkler_state
+        "sprinkler": sprinkler_state,
+        "zones": zone_states
     }

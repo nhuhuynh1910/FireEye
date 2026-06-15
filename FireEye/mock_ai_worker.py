@@ -25,7 +25,7 @@ def load_dotenv(dotenv_path=".env"):
 
 load_dotenv()
 
-CAMERA_IP = os.getenv("CAMERA_IP", "10.10.10.2")
+CAMERA_IP = os.getenv("CAMERA_IP", "192.168.1.108")
 CAMERA_USERNAME = os.getenv("CAMERA_USERNAME", "admin")   
 CAMERA_PASSWORD = os.getenv("CAMERA_PASSWORD", "L2D710CD")
 RTSP_URL = f"rtsp://{CAMERA_USERNAME}:{CAMERA_PASSWORD}@{CAMERA_IP}:554/cam/realmonitor?channel=1&subtype=0"

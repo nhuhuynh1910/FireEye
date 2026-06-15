@@ -49,6 +49,14 @@ export const SystemProvider = ({ children }) => {
     // MQTT connection state
     const [mqttConnected, setMqttConnected] = useState(false);
 
+    // Zone sensor telemetries state (from ESP32 JSON data)
+    const [zones, setZones] = useState({
+        1: { temperature: 0.0, humidity: 0.0, gas: 1, pump: "OFF", buzzer: "OFF", mode: "MANUAL" },
+        2: { temperature: 0.0, humidity: 0.0, gas: 1, pump: "OFF", buzzer: "OFF", mode: "MANUAL" },
+        3: { temperature: 0.0, humidity: 0.0, gas: 1, pump: "OFF", buzzer: "OFF", mode: "MANUAL" },
+        4: { temperature: 0.0, humidity: 0.0, gas: 1, pump: "OFF", buzzer: "OFF", mode: "MANUAL" }
+    });
+
     // Fetch notifications
     const fetchNotifications = useCallback(async () => {
         try {
@@ -146,6 +154,30 @@ export const SystemProvider = ({ children }) => {
         }
     }, [sprinklerState, isBackendConnected, fetchEvents]);
 
+    // Toggle Sprinkler ON/OFF for a specific Zone
+    const toggleZoneSprinkler = useCallback(async (zoneId) => {
+        const zoneData = zones[zoneId] || { pump: "OFF" };
+        const nextAction = zoneData.pump === "ON" ? "OFF" : "ON";
+        try {
+            if (nextAction === "ON") {
+                await api.acceptSprinkler(zoneId);
+            } else {
+                await api.rejectSprinkler(zoneId);
+            }
+            // Update local state instantly for UI responsiveness
+            setZones(prev => ({
+                ...prev,
+                [zoneId]: {
+                    ...prev[zoneId],
+                    pump: nextAction
+                }
+            }));
+            fetchEvents();
+        } catch (err) {
+            console.error(`Failed to control sprinkler for zone ${zoneId}:`, err);
+        }
+    }, [zones, fetchEvents]);
+
     // Emergency Stop: Turn off pump & clear simulated sensor alerts
     const triggerEmergencyStop = useCallback(async () => {
         try {
@@ -177,8 +209,9 @@ export const SystemProvider = ({ children }) => {
 
     // WebSocket real-time AI alerts
     useEffect(() => {
+        const backendIP = import.meta.env.VITE_BACKEND_IP || window.location.hostname;
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/ai`;
+        const wsUrl = `${protocol}//${backendIP}:8000/ws/ai`;
         
         let socket;
         let reconnectTimeout;
@@ -186,6 +219,15 @@ export const SystemProvider = ({ children }) => {
 
         const connectWS = () => {
             if (isClosed) return;
+            
+            // Clean up any existing socket before creating a new one
+            if (socket) {
+                socket.onclose = null;
+                socket.onerror = null;
+                socket.onmessage = null;
+                try { socket.close(); } catch (e) { /* ignore */ }
+            }
+
             console.log("Connecting to AI WebSocket:", wsUrl);
             socket = new WebSocket(wsUrl);
 
@@ -209,11 +251,13 @@ export const SystemProvider = ({ children }) => {
             };
 
             socket.onclose = () => {
+                if (isClosed) return;
                 console.log("AI WebSocket disconnected. Reconnecting in 3 seconds...");
                 reconnectTimeout = setTimeout(connectWS, 3000);
             };
 
             socket.onerror = (err) => {
+                if (isClosed) return;
                 console.error("AI WebSocket error:", err);
                 socket.close();
             };
@@ -223,8 +267,13 @@ export const SystemProvider = ({ children }) => {
 
         return () => {
             isClosed = true;
-            if (socket) socket.close();
             if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (socket) {
+                socket.onclose = null;
+                socket.onerror = null;
+                socket.onmessage = null;
+                socket.close();
+            }
         };
     }, []);
 
@@ -244,6 +293,9 @@ export const SystemProvider = ({ children }) => {
                 setIsCameraOnline(status.camera?.online || false);
                 setSprinklerState(status.sprinkler?.status || "OFF");
                 setOverallAlertLevel(status.overallAlertLevel || "safe");
+                if (status.zones) {
+                    setZones(status.zones);
+                }
                 
                 // Set IoT sensors
                 setSmokeValue(status.sensor?.smokeValue || 0);
@@ -378,6 +430,7 @@ export const SystemProvider = ({ children }) => {
             events,
             fetchEvents,
             toggleSprinkler,
+            toggleZoneSprinkler,
             triggerEmergencyStop,
             autoScanActive,
             setAutoScanActive,
@@ -390,7 +443,8 @@ export const SystemProvider = ({ children }) => {
             faceWatchActive,
             toggleFaceWatch,
             mqttConnected,
-            fetchMQTTStatus
+            fetchMQTTStatus,
+            zones
         }}>
             {children}
         </SystemContext.Provider>
