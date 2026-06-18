@@ -338,5 +338,9 @@ export const api = {
         return request(`${API_BASE_URL}/api/users/${userId}`, {
             method: "DELETE"
         });
+    },
+
+    async getAuditLogs(limit = 100) {
+        return request(`${API_BASE_URL}/api/v1/safety/audit-logs?limit=${limit}`);
     }
 };

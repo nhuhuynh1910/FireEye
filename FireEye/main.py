@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -14,21 +15,39 @@ from routes.event_route import router as event_router
 from routes.face_route import router as face_router
 from routes.notification_route import router as notification_router
 from routes.sprinkler_route import router as sprinkler_router
+from routes.auth_route import router as auth_router
+from routes.user_route import router as user_router
+from routes.safety_control_route import router as safety_control_router, restore_active_sessions_on_startup
 from services.mqtt_service import mqtt_service
-from services.db_service import init_db
+from services.db_service import init_db, create_default_admin_if_not_exists
 from services.cleanup_service import start_cleanup_worker
 from services.camera_service import camera_service
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup ---
+    init_db()
+    create_default_admin_if_not_exists()
+    mqtt_service.start()
+    await restore_active_sessions_on_startup()
+    start_cleanup_worker()
+    camera_service.start_grabber()
+    yield
+    # --- Shutdown ---
+    mqtt_service.stop()
+    camera_service.stop_grabber()
 
 app = FastAPI(
     title="FireEye Backend",
     description="Raspberry Pi 5 + Hailo 8L + Dahua Camera + MQTT",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,  # Đặt thành False vì allow_origins là "*" để tránh lỗi cú pháp FastAPI
+    allow_origin_regex=r"https?://.*",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -45,19 +64,11 @@ app.include_router(event_router)
 app.include_router(face_router)
 app.include_router(notification_router)
 app.include_router(sprinkler_router)
-
-@app.on_event("startup")
-def startup_event():
-    init_db()
-    mqtt_service.start()
-    start_cleanup_worker()
-    camera_service.start_grabber()
+app.include_router(auth_router)
+app.include_router(user_router)
+app.include_router(safety_control_router)
 
 
-@app.on_event("shutdown")
-def shutdown_event():
-    mqtt_service.stop()
-    camera_service.stop_grabber()
 
 
 @app.get("/")

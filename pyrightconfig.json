@@ -1,0 +1,7 @@
+{
+  "venvPath": "FireEye",
+  "venv": "venv",
+  "extraPaths": [
+    "FireEye"
+  ]
+}

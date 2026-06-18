@@ -59,6 +59,71 @@ def init_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            full_name TEXT,
+            role TEXT NOT NULL,
+            is_first_login INTEGER DEFAULT 1,
+            created_at TEXT
+        )
+    """)
+
+    # Bổ sung các cột mới cho bảng users (Safety-Critical fields)
+    for col, col_type in [
+        ("phone_number", "TEXT"), 
+        ("fcm_token", "TEXT"), 
+        ("face_profile_path", "TEXT"),
+        ("is_active", "INTEGER DEFAULT 1")
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+        except sqlite3.OperationalError:
+            pass # Cột đã tồn tại
+
+    # Tạo bảng phân quyền quản lý theo Zone
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS zone_authorizations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            zone_id INTEGER NOT NULL,
+            assigned_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, zone_id)
+        )
+    """)
+
+    # Tạo bảng Audit Logs ghi nhận hoạt động phần cứng
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            action TEXT NOT NULL,
+            target_device TEXT,
+            details TEXT,
+            created_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+
+    # Tạo bảng lưu trạng thái phiên biểu quyết tạm thời để phòng chống sập nguồn
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS temporary_sessions (
+            session_token TEXT PRIMARY KEY,
+            zone_id INTEGER NOT NULL,
+            initiator_id INTEGER NOT NULL,
+            initiator_name TEXT NOT NULL,
+            target_action TEXT NOT NULL,
+            votes_approve INTEGER DEFAULT 1,
+            votes_reject INTEGER DEFAULT 0,
+            voters_voted_json TEXT NOT NULL,
+            threshold INTEGER NOT NULL,
+            expires_at REAL NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -294,3 +359,253 @@ def cleanup_old_events(days: int = 7):
     conn.close()
 
     return deleted_count
+
+
+def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_users() -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, full_name, role, phone_number, fcm_token, face_profile_path, is_first_login, created_at FROM users ORDER BY id ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def insert_user(
+    username: str,
+    password_hash: str,
+    full_name: str,
+    role: str,
+    phone_number: Optional[str] = "",
+    fcm_token: Optional[str] = "",
+    face_profile_path: Optional[str] = ""
+) -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO users (username, password_hash, full_name, role, phone_number, fcm_token, face_profile_path, is_first_login, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+    """, (username, password_hash, full_name, role, phone_number, fcm_token, face_profile_path, get_now()))
+    conn.commit()
+    user_id = cursor.lastrowid
+    conn.close()
+    if user_id is None:
+        raise ValueError("Failed to insert user, row ID was not returned.")
+    return user_id
+
+
+def update_user(
+    user_id: int,
+    full_name: str,
+    role: str,
+    password_hash: Optional[str] = None,
+    phone_number: Optional[str] = None,
+    fcm_token: Optional[str] = None,
+    face_profile_path: Optional[str] = None
+) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Lấy thông tin user hiện tại để giữ lại các trường không cập nhật
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    existing = cursor.fetchone()
+    if not existing:
+        conn.close()
+        return False
+        
+    current_phone = phone_number if phone_number is not None else existing["phone_number"]
+    current_fcm = fcm_token if fcm_token is not None else existing["fcm_token"]
+    current_face = face_profile_path if face_profile_path is not None else existing["face_profile_path"]
+
+    if password_hash:
+        cursor.execute("""
+            UPDATE users
+            SET full_name = ?, role = ?, password_hash = ?, phone_number = ?, fcm_token = ?, face_profile_path = ?, is_first_login = 1
+            WHERE id = ?
+        """, (full_name, role, password_hash, current_phone, current_fcm, current_face, user_id))
+    else:
+        cursor.execute("""
+            UPDATE users
+            SET full_name = ?, role = ?, phone_number = ?, fcm_token = ?, face_profile_path = ?
+            WHERE id = ?
+        """, (full_name, role, current_phone, current_fcm, current_face, user_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def update_user_password(user_id: int, password_hash: str, is_first_login: int = 0) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE users
+        SET password_hash = ?, is_first_login = ?
+        WHERE id = ?
+    """, (password_hash, is_first_login, user_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_user_db(user_id: int) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def create_default_admin_if_not_exists():
+    from services.auth_service import hash_password
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    # Kiểm tra xem tài khoản 'admin' đã tồn tại chưa
+    cursor.execute("SELECT COUNT(*) as count FROM users WHERE username = 'admin'")
+    row = cursor.fetchone()
+    
+    if row["count"] == 0:
+        admin_hash = hash_password("adminpassword")
+        cursor.execute("""
+            INSERT INTO users (username, password_hash, full_name, role, phone_number, fcm_token, face_profile_path, is_active, is_first_login, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
+        """, ("admin", admin_hash, "System Administrator", "OWNER", "+84999999999", "", "", get_now()))
+        conn.commit()
+        print("Default Owner user seeded successfully!")
+        
+    conn.close()
+
+
+def update_user_status_db(user_id: int, is_active: int) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET is_active = ? WHERE id = ?", (is_active, user_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def insert_audit_log(user_id: Optional[int], action: str, target_device: Optional[str] = None, details: Optional[str] = None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO audit_logs (user_id, action, target_device, details, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (user_id, action, target_device, details, get_now()))
+    conn.commit()
+    conn.close()
+
+
+def get_audit_logs(limit: int = 100) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT audit_logs.*, users.username, users.full_name
+        FROM audit_logs
+        LEFT JOIN users ON users.id = audit_logs.user_id
+        ORDER BY audit_logs.id DESC
+        LIMIT ?
+    """, (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_zone_authorizations(user_id: int) -> List[int]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT zone_id FROM zone_authorizations WHERE user_id = ?", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [row["zone_id"] for row in rows]
+
+
+def insert_zone_authorization(user_id: int, zone_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT OR IGNORE INTO zone_authorizations (user_id, zone_id, assigned_at)
+            VALUES (?, ?, ?)
+        """, (user_id, zone_id, get_now()))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def remove_zone_authorization(user_id: int, zone_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM zone_authorizations WHERE user_id = ? AND zone_id = ?", (user_id, zone_id))
+    conn.commit()
+    conn.close()
+
+
+# --- PHẦN HỒI PHỤC PHIÊN VỚI DATABASE (FAULT TOLERANCE) ---
+def save_temporary_session(session: dict):
+    conn = get_connection()
+    cursor = conn.cursor()
+    voters_json = json.dumps(session.get("voters_voted", []))
+    cursor.execute("""
+        INSERT OR REPLACE INTO temporary_sessions (
+            session_token, zone_id, initiator_id, initiator_name, target_action,
+            votes_approve, votes_reject, voters_voted_json, threshold, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        session["session_token"],
+        session["zone_id"],
+        session["initiator_id"],
+        session["initiator_name"],
+        session["target_action"],
+        session["votes_approve"],
+        session["votes_reject"],
+        voters_json,
+        session["threshold"],
+        session["expires_at"]
+    ))
+    conn.commit()
+    conn.close()
+
+
+def delete_temporary_session(session_token: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM temporary_sessions WHERE session_token = ?", (session_token,))
+    conn.commit()
+    conn.close()
+
+
+def get_all_temporary_sessions() -> List[dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM temporary_sessions")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    sessions = []
+    for row in rows:
+        session = dict(row)
+        try:
+            session["voters_voted"] = json.loads(session["voters_voted_json"])
+        except Exception:
+            session["voters_voted"] = []
+        sessions.append(session)
+    return sessions

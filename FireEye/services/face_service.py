@@ -4,7 +4,12 @@ import numpy as np
 import uuid
 import threading
 from pathlib import Path
-from insightface.app import FaceAnalysis
+try:
+    from insightface.app import FaceAnalysis
+    INSIGHTFACE_AVAILABLE = True
+except ImportError:
+    FaceAnalysis = None
+    INSIGHTFACE_AVAILABLE = False
 
 from services.db_service import (
     insert_person,
@@ -32,9 +37,17 @@ except Exception as e:
     ctx_id = -1
 
 # Khởi tạo mô hình InsightFace buffalo_s
-face_app = FaceAnalysis(name="buffalo_s")
-# Dùng det_size=(160, 160) vì đầu vào lúc này chỉ là ảnh đã crop khuôn mặt, giúp tăng tốc độ xử lý rất nhiều
-face_app.prepare(ctx_id=ctx_id, det_size=(160, 160))
+if INSIGHTFACE_AVAILABLE and FaceAnalysis is not None:
+    try:
+        face_app = FaceAnalysis(name="buffalo_s")
+        # Dùng det_size=(160, 160) vì đầu vào lúc này chỉ là ảnh đã crop khuôn mặt, giúp tăng tốc độ xử lý rất nhiều
+        face_app.prepare(ctx_id=ctx_id, det_size=(160, 160))
+    except Exception as e:
+        print(f"Error initializing InsightFace: {e}")
+        face_app = None
+else:
+    print("Warning: insightface module not found. Face recognition features will be disabled.")
+    face_app = None
 
 # Khởi tạo bộ dò tìm khuôn mặt siêu nhẹ Haar Cascade (Stage 1)
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -79,6 +92,11 @@ def register_face_from_image(
     role: str,
     image_path: str
 ):
+    if face_app is None:
+        return {
+            "success": False,
+            "message": "Không thể đăng ký: Thư viện nhận dạng khuôn mặt (insightface) không hoạt động trên thiết bị này"
+        }
     img = cv2.imread(image_path)
 
     if img is None:
@@ -157,6 +175,11 @@ def match_face_from_image(
     image_path: str,
     threshold: float = 0.45
 ):
+    if face_app is None:
+        return {
+            "success": False,
+            "message": "Không thể đối khớp: Thư viện nhận diện khuôn mặt (insightface) không hoạt động trên thiết bị này"
+        }
     global _known_embeddings_cache
     img = cv2.imread(image_path)
 

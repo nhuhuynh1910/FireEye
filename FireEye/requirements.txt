@@ -4,3 +4,5 @@ opencv-python
 paho-mqtt
 requests
 python-multipart
+onnxruntime
+insightface

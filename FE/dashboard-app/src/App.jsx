@@ -28,13 +28,18 @@ const MainLayout = () => {
     const { user, logout } = useAuth();
 
     const [showNotifications, setShowNotifications] = useState(false);
+    const [showUserDropdown, setShowUserDropdown] = useState(false);
     const dropdownRef = useRef(null);
+    const userDropdownRef = useRef(null);
 
-    // Close notifications dropdown on click outside
+    // Close dropdowns on click outside
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
                 setShowNotifications(false);
+            }
+            if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
+                setShowUserDropdown(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -73,20 +78,17 @@ const MainLayout = () => {
                     >
                         Event Logs
                     </button>
-                    {user?.role === 'ADMIN' && (
+                    {(user?.role === 'ADMIN' || user?.role === 'OWNER') && (
                         <button
-                            className={`nav-tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('users')}
+                            className={`nav-tab-btn ${activeTab === 'admin' ? 'active' : ''}`}
+                            onClick={() => {
+                                localStorage.removeItem('admin_sub_tab');
+                                setActiveTab('admin');
+                            }}
                         >
-                            Users
+                            Admin Panel
                         </button>
                     )}
-                    <button
-                        className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('settings')}
-                    >
-                        Settings
-                    </button>
                 </nav>
 
                 {/* Controls and Indicators */}
@@ -163,41 +165,44 @@ const MainLayout = () => {
                             </div>
                         )}
                     </div>
-
-                    <div className="sys-telemetry-pill">
-                        <div className="telemetry-item">
-                            NPU: <strong>{npuLoad.toFixed(0)}%</strong>
-                        </div>
-                        <div className="telemetry-item">
-                            TEMP: <strong>{systemTemp.toFixed(1)}°C</strong>
-                        </div>
-                    </div>
                     
-                    {/* User profile & logout controls */}
-                    <div className="navbar-user-info">
-                        <span className="user-icon">👤</span>
-                        <div className="user-labels">
-                            <span className="user-name">{user?.full_name || user?.username}</span>
-                            <span className="user-role">{user?.role}</span>
-                        </div>
-                    </div>
+                    {/* Compact User Profile Dropdown */}
+                    <div className="navbar-user-dropdown-container" ref={userDropdownRef}>
+                        <button 
+                            className="navbar-user-info-btn"
+                            onClick={() => setShowUserDropdown(!showUserDropdown)}
+                            title="Quản lý tài khoản"
+                        >
+                            <span className="user-icon-circle">👤</span>
+                            <span className="user-display-name">{user?.full_name || user?.username}</span>
+                            <span className="dropdown-arrow">▼</span>
+                        </button>
 
-                    <button className="btn-logout-header" onClick={logout} title="Đăng xuất khỏi hệ thống">
-                        Đăng xuất
-                    </button>
-
-                    <div className="system-status-indicator">
-                        <span className="indicator-dot"></span>
-                        <span className="indicator-text">SYSTEM ONLINE</span>
+                        {showUserDropdown && (
+                            <div className="user-dropdown-menu">
+                                <div className="user-menu-header">
+                                    <span className="menu-user-name">{user?.full_name || user?.username}</span>
+                                    <span className="menu-user-role-badge">{user?.role}</span>
+                                </div>
+                                {(user?.role === 'ADMIN' || user?.role === 'OWNER') && (
+                                    <>
+                                        <button className="menu-item-btn" onClick={() => { 
+                                            localStorage.setItem('admin_sub_tab', 'settings');
+                                            window.dispatchEvent(new Event('admin_sub_tab_changed'));
+                                            setActiveTab('admin'); 
+                                            setShowUserDropdown(false); 
+                                        }}>
+                                            ⚙️ Thiết Lập Hệ Thống
+                                        </button>
+                                        <hr className="menu-divider" />
+                                    </>
+                                )}
+                                <button className="menu-item-btn btn-logout-menu" onClick={logout}>
+                                    🚪 Đăng Xuất
+                                </button>
+                            </div>
+                        )}
                     </div>
-                    
-                    <button
-                        className="btn-emergency-stop"
-                        onClick={triggerEmergencyStop}
-                        title="SHUTDOWN ALL OUTLETS & CLEAR ALARMS"
-                    >
-                        EMERGENCY STOP
-                    </button>
                 </div>
             </header>
 
