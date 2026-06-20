@@ -139,8 +139,11 @@ export const VideoFeed = () => {
                         className="video-stream-container"
                         style={{
                             position: 'relative',
-                            width: '100%',
-                            height: '100%',
+                            aspectRatio: '16/9',
+                            width: 'auto',
+                            height: 'auto',
+                            maxWidth: '100%',
+                            maxHeight: '100%',
                             display: 'flex',
                             justifyContent: 'center',
                             alignItems: 'center',
@@ -156,7 +159,7 @@ export const VideoFeed = () => {
                             style={{
                                 width: '100%',
                                 height: '100%',
-                                objectFit: 'contain'
+                                objectFit: 'cover'
                             }}
                             onError={(e) => {
                                 console.error("Camera stream load error");

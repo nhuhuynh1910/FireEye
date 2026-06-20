@@ -8,9 +8,10 @@ from services.db_service import (
     get_user_by_username,
     insert_user,
     update_user,
-    delete_user_db
+    delete_user_db,
+    update_user_status_db
 )
-from services.auth_service import hash_password, require_admin
+from services.auth_service import hash_password, require_admin, is_password_strong
 
 router = APIRouter(
     prefix="/api/users",
@@ -27,6 +28,7 @@ class UserUpdateRequest(BaseModel):
     full_name: Optional[str] = ""
     role: str # 'ADMIN' | 'STAFF'
     password: Optional[str] = None
+    is_active: Optional[bool] = True
 
 @router.get("")
 def list_users(admin_user: dict = Depends(require_admin)):
@@ -34,6 +36,7 @@ def list_users(admin_user: dict = Depends(require_admin)):
     # Ensure is_first_login is bool
     for u in users:
         u["is_first_login"] = bool(u["is_first_login"])
+        u["is_active"] = bool(u.get("is_active", 1))
     return users
 
 @router.post("")
@@ -46,6 +49,13 @@ def create_user(payload: UserCreateRequest, admin_user: dict = Depends(require_a
             detail="Tên đăng nhập đã tồn tại trên hệ thống"
         )
     
+    strong, msg = is_password_strong(payload.password)
+    if not strong:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=msg
+        )
+        
     pwd_hash = hash_password(payload.password)
     user_id = insert_user(
         username=payload.username,
@@ -72,6 +82,12 @@ def update_user_details(
     
     pwd_hash = None
     if payload.password:
+        strong, msg = is_password_strong(payload.password)
+        if not strong:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=msg
+            )
         pwd_hash = hash_password(payload.password)
         
     update_user(
@@ -80,6 +96,10 @@ def update_user_details(
         role=role,
         password_hash=pwd_hash
     )
+    
+    # Update active status
+    is_active_val = 1 if payload.is_active is None or payload.is_active else 0
+    update_user_status_db(user_id, is_active_val)
     
     return {
         "success": True,

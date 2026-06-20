@@ -1,11 +1,12 @@
 /* store/SystemContext.jsx */
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { api } from '../services/api';
+import { api, API_BASE_URL, BACKEND_IP } from '../services/api';
 
 const SystemContext = createContext(null);
 
 export const SystemProvider = ({ children }) => {
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [viewMode, setViewMode] = useState('operator'); // 'operator' | 'admin'
     const [isBackendConnected, setIsBackendConnected] = useState(false);
     
     // Status states
@@ -127,9 +128,9 @@ export const SystemProvider = ({ children }) => {
     }, []);
 
     // Fetch Events list from SQLite
-    const fetchEvents = useCallback(async () => {
+    const fetchEvents = useCallback(async (limit = 10) => {
         try {
-            const response = await api.getEvents(10);
+            const response = await api.getEvents(limit);
             if (response && response.status === "success") {
                 setEvents(response.data);
             }
@@ -209,9 +210,8 @@ export const SystemProvider = ({ children }) => {
 
     // WebSocket real-time AI alerts
     useEffect(() => {
-        const backendIP = import.meta.env.VITE_BACKEND_IP || window.location.hostname;
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${protocol}//${backendIP}:8000/ws/ai`;
+        const wsUrl = `${protocol}//${window.location.host}/ws/ai`;
         
         let socket;
         let reconnectTimeout;
@@ -369,10 +369,11 @@ export const SystemProvider = ({ children }) => {
 
     // Poll Event logs periodically
     useEffect(() => {
-        fetchEvents();
-        const interval = setInterval(fetchEvents, 3000);
+        const limit = activeTab === 'events' ? 100 : 10;
+        fetchEvents(limit);
+        const interval = setInterval(() => fetchEvents(limit), activeTab === 'events' ? 2500 : 3000);
         return () => clearInterval(interval);
-    }, [fetchEvents]);
+    }, [fetchEvents, activeTab]);
 
     // Enhanced scanning behavior based on preset zones
     useEffect(() => {
@@ -444,7 +445,9 @@ export const SystemProvider = ({ children }) => {
             toggleFaceWatch,
             mqttConnected,
             fetchMQTTStatus,
-            zones
+            zones,
+            viewMode,
+            setViewMode
         }}>
             {children}
         </SystemContext.Provider>

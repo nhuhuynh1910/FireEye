@@ -24,6 +24,9 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
+    # Enable WAL mode for SQLite to optimize writes and protect storage life
+    cursor.execute("PRAGMA journal_mode=WAL;")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,6 +70,9 @@ def init_db():
             full_name TEXT,
             role TEXT NOT NULL,
             is_first_login INTEGER DEFAULT 1,
+            is_active INTEGER DEFAULT 1,
+            failed_login_attempts INTEGER DEFAULT 0,
+            locked_until TEXT,
             created_at TEXT
         )
     """)
@@ -76,7 +82,9 @@ def init_db():
         ("phone_number", "TEXT"), 
         ("fcm_token", "TEXT"), 
         ("face_profile_path", "TEXT"),
-        ("is_active", "INTEGER DEFAULT 1")
+        ("is_active", "INTEGER DEFAULT 1"),
+        ("failed_login_attempts", "INTEGER DEFAULT 0"),
+        ("locked_until", "TEXT")
     ]:
         try:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
@@ -123,6 +131,7 @@ def init_db():
             expires_at REAL NOT NULL
         )
     """)
+
 
     conn.commit()
     conn.close()
@@ -382,7 +391,7 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
 def get_all_users() -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, full_name, role, phone_number, fcm_token, face_profile_path, is_first_login, created_at FROM users ORDER BY id ASC")
+    cursor.execute("SELECT id, username, full_name, role, phone_number, fcm_token, face_profile_path, is_first_login, is_active, created_at FROM users ORDER BY id ASC")
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
@@ -609,3 +618,43 @@ def get_all_temporary_sessions() -> List[dict]:
             session["voters_voted"] = []
         sessions.append(session)
     return sessions
+
+
+def increment_failed_login(user_id: int) -> tuple[int, Optional[str]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT failed_login_attempts FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    attempts = (row["failed_login_attempts"] if row and row["failed_login_attempts"] is not None else 0) + 1
+    
+    locked_until_str = None
+    if attempts >= 5:
+        locked_time = datetime.now() + timedelta(minutes=15)
+        locked_until_str = locked_time.strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+            UPDATE users 
+            SET failed_login_attempts = ?, locked_until = ? 
+            WHERE id = ?
+        """, (attempts, locked_until_str, user_id))
+    else:
+        cursor.execute("""
+            UPDATE users 
+            SET failed_login_attempts = ? 
+            WHERE id = ?
+        """, (attempts, user_id))
+        
+    conn.commit()
+    conn.close()
+    return attempts, locked_until_str
+
+
+def reset_failed_login(user_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE users 
+        SET failed_login_attempts = 0, locked_until = NULL 
+        WHERE id = ?
+    """, (user_id,))
+    conn.commit()
+    conn.close()

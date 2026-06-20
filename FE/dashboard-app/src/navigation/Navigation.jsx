@@ -4,7 +4,7 @@ import { useSystem } from '../store/SystemContext';
 import { Dashboard } from '../pages/Dashboard';
 import { FaceDatabase } from '../pages/FaceDatabase';
 import { EventLogs } from '../pages/EventLogs';
-import { AdminDashboard } from '../pages/AdminDashboard';
+import { AdminLayout } from '../components/AdminLayout';
 
 export const Navigation = () => {
     const { activeTab } = useSystem();
@@ -17,7 +17,7 @@ export const Navigation = () => {
         case 'events':
             return <EventLogs />;
         case 'admin':
-            return <AdminDashboard />;
+            return <AdminLayout />;
         default:
             return <Dashboard />;
     }

@@ -1,40 +1,21 @@
 /* pages/EventLogs.jsx */
-import React, { useState, useEffect } from 'react';
-import { api } from '../services/api';
-
-const BACKEND_IP = import.meta.env.VITE_BACKEND_IP || (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1');
-const API_BASE_URL = `http://${BACKEND_IP}:8000`;
+import React, { useState } from 'react';
+import { API_BASE_URL } from '../services/api';
+import { useSystem } from '../store/SystemContext';
 
 export const EventLogs = () => {
-    const [events, setEvents] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
+    const { events, fetchEvents } = useSystem();
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState(null);
 
-    const loadEvents = async (silent = false) => {
-        const isSilent = silent === true; // Chỉ coi là silent nếu truyền chính xác giá trị true (tránh React event object)
-        if (!isSilent) setIsLoading(true);
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
         try {
-            const res = await api.getEvents(100);
-            if (res.status === "success") {
-                setEvents(res.data);
-            }
-        } catch (err) {
-            console.error("Failed to load events:", err);
+            await fetchEvents(100);
         } finally {
-            if (!isSilent) setIsLoading(false);
+            setIsRefreshing(false);
         }
     };
-
-    useEffect(() => {
-        loadEvents(false); // Lần đầu tải hiển thị spinner
-        
-        // Tự động làm mới mỗi 2.5 giây chạy ngầm
-        const interval = setInterval(() => {
-            loadEvents(true);
-        }, 2500);
-
-        return () => clearInterval(interval);
-    }, []);
 
     const formatTime = (timeStr) => {
         if (!timeStr) return "";
@@ -46,13 +27,13 @@ export const EventLogs = () => {
         <div className="events-panel">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 className="face-db-title" style={{ marginBottom: 0 }}>SECURITY EVENT LOGS DATABASE</h3>
-                <button className="btn-tech-action" onClick={() => loadEvents(false)} disabled={isLoading} style={{ marginTop: 0 }}>
-                    {isLoading ? "POLLING SQL..." : "REFRESH LOGS"}
+                <button className="btn-tech-action" onClick={handleRefresh} disabled={isRefreshing} style={{ marginTop: 0 }}>
+                    {isRefreshing ? "POLLING SQL..." : "REFRESH LOGS"}
                 </button>
             </div>
 
             <div className="events-table-wrapper">
-                {isLoading && events.length === 0 ? (
+                {isRefreshing && events.length === 0 ? (
                     <div style={{ padding: '20px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
                         QUERYING TELEMETRY SQL SECURE JOURNAL...
                     </div>

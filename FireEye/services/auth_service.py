@@ -4,6 +4,7 @@ import hmac
 import hashlib
 from datetime import datetime, timedelta
 import os
+import re
 # pyrefly: ignore [missing-import]
 from fastapi import Request, HTTPException, status, Depends
 from services.db_service import get_user_by_id
@@ -63,6 +64,19 @@ def hash_password(password: str) -> str:
     salt = os.urandom(16)
     pwdhash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
     return salt.hex() + ":" + pwdhash.hex()
+
+def is_password_strong(password: str) -> tuple[bool, str]:
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    if not re.search(r"[A-Z]", password):
+        return False, "Password must contain at least one uppercase letter (A-Z)."
+    if not re.search(r"[a-z]", password):
+        return False, "Password must contain at least one lowercase letter (a-z)."
+    if not re.search(r"\d", password):
+        return False, "Password must contain at least one number (0-9)."
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+        return False, "Password must contain at least one special character (e.g. !@#$%^&*)."
+    return True, ""
 
 def verify_password(password: str, hashed: str) -> bool:
     try:

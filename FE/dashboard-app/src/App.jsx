@@ -6,11 +6,11 @@ import { TelemetrySidebar } from './components/TelemetrySidebar';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './components/Login';
 import { ChangePassword } from './components/ChangePassword';
+import { AdminLayout } from './components/AdminLayout';
 import logoImg from './assets/image-removebg-preview.jpg';
 import './App.css';
 
-const BACKEND_IP = import.meta.env.VITE_BACKEND_IP || (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1');
-const API_BASE_URL = `http://${BACKEND_IP}:8000`;
+import { API_BASE_URL } from './services/api';
 
 const MainLayout = () => {
     const {
@@ -22,24 +22,26 @@ const MainLayout = () => {
         triggerEmergencyStop,
         notifications,
         unreadCount,
-        markAsRead
+        markAsRead,
+        setViewMode
     } = useSystem();
 
     const { user, logout } = useAuth();
 
     const [showNotifications, setShowNotifications] = useState(false);
-    const [showUserDropdown, setShowUserDropdown] = useState(false);
     const dropdownRef = useRef(null);
-    const userDropdownRef = useRef(null);
 
-    // Close dropdowns on click outside
+    const handleEmergencyStopClick = () => {
+        if (window.confirm("WARNING: Are you sure you want to trigger EMERGENCY STOP? This will immediately shutdown all sprinkler outlets and clear active threat levels!")) {
+            triggerEmergencyStop();
+        }
+    };
+
+    // Close notifications dropdown on click outside
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
                 setShowNotifications(false);
-            }
-            if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
-                setShowUserDropdown(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -78,15 +80,12 @@ const MainLayout = () => {
                     >
                         Event Logs
                     </button>
-                    {(user?.role === 'ADMIN' || user?.role === 'OWNER') && (
+                    {user?.role === 'ADMIN' && (
                         <button
-                            className={`nav-tab-btn ${activeTab === 'admin' ? 'active' : ''}`}
-                            onClick={() => {
-                                localStorage.removeItem('admin_sub_tab');
-                                setActiveTab('admin');
-                            }}
+                            className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('settings')}
                         >
-                            Admin Panel
+                            Settings
                         </button>
                     )}
                 </nav>
@@ -165,44 +164,39 @@ const MainLayout = () => {
                             </div>
                         )}
                     </div>
-                    
-                    {/* Compact User Profile Dropdown */}
-                    <div className="navbar-user-dropdown-container" ref={userDropdownRef}>
-                        <button 
-                            className="navbar-user-info-btn"
-                            onClick={() => setShowUserDropdown(!showUserDropdown)}
-                            title="Quản lý tài khoản"
-                        >
-                            <span className="user-icon-circle">👤</span>
-                            <span className="user-display-name">{user?.full_name || user?.username}</span>
-                            <span className="dropdown-arrow">▼</span>
-                        </button>
 
-                        {showUserDropdown && (
-                            <div className="user-dropdown-menu">
-                                <div className="user-menu-header">
-                                    <span className="menu-user-name">{user?.full_name || user?.username}</span>
-                                    <span className="menu-user-role-badge">{user?.role}</span>
-                                </div>
-                                {(user?.role === 'ADMIN' || user?.role === 'OWNER') && (
-                                    <>
-                                        <button className="menu-item-btn" onClick={() => { 
-                                            localStorage.setItem('admin_sub_tab', 'settings');
-                                            window.dispatchEvent(new Event('admin_sub_tab_changed'));
-                                            setActiveTab('admin'); 
-                                            setShowUserDropdown(false); 
-                                        }}>
-                                            ⚙️ Thiết Lập Hệ Thống
-                                        </button>
-                                        <hr className="menu-divider" />
-                                    </>
-                                )}
-                                <button className="menu-item-btn btn-logout-menu" onClick={logout}>
-                                    🚪 Đăng Xuất
-                                </button>
-                            </div>
-                        )}
+                    
+                    {/* User profile & logout controls */}
+                    <div className="navbar-user-info">
+                        <span className="user-icon">👤</span>
+                        <div className="user-labels">
+                            <span className="user-name">{user?.full_name || user?.username}</span>
+                            <span className="user-role">{user?.role}</span>
+                        </div>
                     </div>
+
+                    {user?.role === 'ADMIN' && (
+                        <button className="btn-admin-console-header" onClick={() => setViewMode('admin')} title="Open Administrator Console">
+                            🛡️ Admin Console
+                        </button>
+                    )}
+
+                    <button className="btn-logout-header" onClick={logout} title="Đăng xuất khỏi hệ thống">
+                        Đăng xuất
+                    </button>
+
+                    <div className="system-status-indicator">
+                        <span className="indicator-dot"></span>
+                        <span className="indicator-text">SYSTEM ONLINE</span>
+                    </div>
+                    
+                    <button
+                        className="btn-emergency-stop"
+                        onClick={handleEmergencyStopClick}
+                        title="SHUTDOWN ALL OUTLETS & CLEAR ALARMS"
+                    >
+                        EMERGENCY STOP
+                    </button>
                 </div>
             </header>
 
@@ -242,15 +236,22 @@ const AppContent = () => {
         return <ChangePassword />;
     }
 
-    return <MainLayout />;
+    return (
+        <SystemProvider>
+            <AppViewport />
+        </SystemProvider>
+    );
+};
+
+const AppViewport = () => {
+    const { viewMode } = useSystem();
+    return viewMode === 'admin' ? <AdminLayout /> : <MainLayout />;
 };
 
 function App() {
     return (
         <AuthProvider>
-            <SystemProvider>
-                <AppContent />
-            </SystemProvider>
+            <AppContent />
         </AuthProvider>
     );
 }

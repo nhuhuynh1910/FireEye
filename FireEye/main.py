@@ -44,6 +44,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# CORS configuration supporting credentials (cookies) and localhost / LAN IP patterns
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"https?://.*",

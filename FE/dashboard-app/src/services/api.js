@@ -1,7 +1,7 @@
 /* services/api.js */
 
-const BACKEND_IP = import.meta.env.VITE_BACKEND_IP || (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1');
-const API_BASE_URL = `http://${BACKEND_IP}:8000`;
+export const BACKEND_IP = import.meta.env.VITE_BACKEND_IP || (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1');
+export const API_BASE_URL = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : `http://${BACKEND_IP}:8000`;
 
 const request = async (url, options = {}) => {
     options.credentials = 'include'; // Ensure cookies are sent
@@ -327,10 +327,10 @@ export const api = {
         });
     },
 
-    async updateUser(userId, fullName, role, password = null) {
+    async updateUser(userId, fullName, role, password = null, isActive = true) {
         return request(`${API_BASE_URL}/api/users/${userId}`, {
             method: "PUT",
-            body: JSON.stringify({ full_name: fullName, role, password })
+            body: JSON.stringify({ full_name: fullName, role, password, is_active: isActive })
         });
     },
 
