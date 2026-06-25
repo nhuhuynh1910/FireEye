@@ -94,14 +94,15 @@ def get_sprinkler_state():
 
 
 zone_states = {
-    1: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None},
-    2: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None},
-    3: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None},
-    4: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None}
+    1: {"temperature": 0.0, "humidity": 0.0, "gas": 1, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0},
+    2: {"temperature": 0.0, "humidity": 0.0, "gas": 1, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0},
+    3: {"temperature": 0.0, "humidity": 0.0, "gas": 1, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0},
+    4: {"temperature": 0.0, "humidity": 0.0, "gas": 1, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0}
 }
 
 
 def update_zone_state(zone_id, temperature, humidity, gas, pump, buzzer, mode):
+    import time
     if zone_id in zone_states:
         zone_states[zone_id] = {
             "temperature": temperature,
@@ -110,7 +111,8 @@ def update_zone_state(zone_id, temperature, humidity, gas, pump, buzzer, mode):
             "pump": pump,
             "buzzer": buzzer,
             "mode": mode,
-            "lastUpdated": now()
+            "lastUpdated": now(),
+            "lastUpdatedTime": time.time()
         }
     return zone_states.get(zone_id)
 
@@ -120,6 +122,7 @@ def get_zone_states():
 
 
 def get_overall_status():
+    import time
     if sensor_state["alertLevel"] == "danger" or ai_state["alertLevel"] == "danger":
         level = "danger"
     elif sensor_state["alertLevel"] == "warning" or ai_state["alertLevel"] == "warning":
@@ -127,11 +130,20 @@ def get_overall_status():
     else:
         level = "safe"
 
+    zones_result = {}
+    current_time = time.time()
+    for z_id, z_val in zone_states.items():
+        z_copy = z_val.copy()
+        last_time = z_copy.get("lastUpdatedTime", 0.0)
+        is_online = (last_time > 0.0) and (current_time - last_time <= 15.0)
+        z_copy["online"] = is_online
+        zones_result[z_id] = z_copy
+
     return {
         "backend": "online",
         "overallAlertLevel": level,
         "sensor": sensor_state,
         "ai": ai_state,
         "sprinkler": sprinkler_state,
-        "zones": zone_states
+        "zones": zones_result
     }

@@ -28,7 +28,7 @@ export const UserManagement = () => {
             const data = await api.getUsers();
             setUsers(data);
         } catch (err) {
-            setError(err.message || 'Không thể tải danh sách người dùng.');
+            setError(err.message || 'Failed to load users list.');
         } finally {
             setLoading(false);
         }
@@ -68,7 +68,7 @@ export const UserManagement = () => {
         setSuccess('');
 
         if (modalMode === 'create' && (!formUsername.trim() || !formPassword.trim())) {
-            setError('Vui lòng nhập tên đăng nhập và mật khẩu.');
+            setError('Please enter username and password.');
             return;
         }
 
@@ -76,16 +76,16 @@ export const UserManagement = () => {
         try {
             if (modalMode === 'create') {
                 await api.createUser(formUsername, formPassword, formFullName, formRole);
-                setSuccess(`Đã tạo tài khoản "${formUsername}" thành công!`);
+                setSuccess(`Account "${formUsername}" created successfully!`);
             } else {
                 await api.updateUser(selectedUserId, formFullName, formRole, formPassword || null);
-                setSuccess(`Đã cập nhật tài khoản "${formUsername}" thành công!`);
+                setSuccess(`Account "${formUsername}" updated successfully!`);
             }
             setIsModalOpen(false);
             loadUsers();
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError(err.message || 'Thao tác thất bại.');
+            setError(err.message || 'Operation failed.');
         } finally {
             setFormSubmitting(false);
         }
@@ -93,11 +93,11 @@ export const UserManagement = () => {
 
     const handleDeleteUser = async (userId, username) => {
         if (userId === currentUser.id) {
-            alert('Bạn không thể xóa tài khoản của chính mình.');
+            alert('You cannot delete your own account.');
             return;
         }
 
-        if (!window.confirm(`Bạn có chắc chắn muốn xóa tài khoản "${username}" không? Hành động này không thể hoàn tác.`)) {
+        if (!window.confirm(`Are you sure you want to delete the account "${username}"? This action cannot be undone.`)) {
             return;
         }
 
@@ -105,11 +105,11 @@ export const UserManagement = () => {
         setSuccess('');
         try {
             await api.deleteUser(userId);
-            setSuccess(`Đã xóa tài khoản "${username}" thành công.`);
+            setSuccess(`Account "${username}" deleted successfully.`);
             loadUsers();
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError(err.message || 'Không thể xóa người dùng.');
+            setError(err.message || 'Failed to delete user.');
         }
     };
 
@@ -117,9 +117,13 @@ export const UserManagement = () => {
         return (
             <div className="unauthorized-container">
                 <div className="unauthorized-card">
-                    <span className="shield-icon">🛡️</span>
-                    <h2>Khu vực cấm truy cập</h2>
-                    <p>Bạn không có quyền quản trị viên (ADMIN) để xem trang này.</p>
+                    <span className="shield-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="var(--accent-red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </span>
+                    <h2>Unauthorized Access</h2>
+                    <p>You do not have Administrator (ADMIN) permissions to view this page.</p>
                 </div>
             </div>
         );
@@ -129,15 +133,15 @@ export const UserManagement = () => {
         <div className="user-management-page">
             <div className="page-header-glow">
                 <div>
-                    <h1 className="page-title">Quản Lý Người Dùng</h1>
-                    <p className="page-subtitle">Quản trị phân quyền tài khoản truy cập hệ thống FireEye Dashboard</p>
+                    <h1 className="page-title">User Management</h1>
+                    <p className="page-subtitle">Manage system access permissions and roles for FireEye Dashboard</p>
                 </div>
                 <button className="btn-add-user-glow" onClick={openCreateModal}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="plus-icon">
                         <line x1="12" y1="5" x2="12" y2="19"></line>
                         <line x1="5" y1="12" x2="19" y2="12"></line>
                     </svg>
-                    Tạo Người Dùng Mới
+                    Create New User
                 </button>
             </div>
 
@@ -148,25 +152,25 @@ export const UserManagement = () => {
                 {loading ? (
                     <div className="table-loader">
                         <span className="spinner"></span>
-                        <p>Đang tải danh sách người dùng...</p>
+                        <p>Loading user list...</p>
                     </div>
                 ) : (
                     <table className="table-glow">
                         <thead>
                             <tr>
-                                <th>TÊN ĐĂNG NHẬP</th>
-                                <th>HỌ VÀ TÊN</th>
-                                <th>VAI TRÒ</th>
-                                <th>MẬT KHẨU MẶC ĐỊNH</th>
-                                <th>NGÀY TẠO</th>
-                                <th style={{ textAlign: 'right' }}>THAO TÁC</th>
+                                <th>USERNAME</th>
+                                <th>FULL NAME</th>
+                                <th>ROLE</th>
+                                <th>DEFAULT PASSWORD</th>
+                                <th>CREATED DATE</th>
+                                <th style={{ textAlign: 'right' }}>ACTIONS</th>
                             </tr>
                         </thead>
                         <tbody>
                             {users.length === 0 ? (
                                 <tr>
                                     <td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>
-                                        Không có người dùng nào.
+                                        No users found.
                                     </td>
                                 </tr>
                             ) : (
@@ -174,7 +178,7 @@ export const UserManagement = () => {
                                     <tr key={u.id} className={u.id === currentUser.id ? 'current-user-row' : ''}>
                                         <td>
                                             <span className="username-badge">{u.username}</span>
-                                            {u.id === currentUser.id && <span className="self-tag">(Tài khoản của bạn)</span>}
+                                            {u.id === currentUser.id && <span className="self-tag">(Your account)</span>}
                                         </td>
                                         <td>{u.full_name || '—'}</td>
                                         <td>
@@ -184,9 +188,9 @@ export const UserManagement = () => {
                                         </td>
                                         <td>
                                             {u.is_first_login ? (
-                                                <span className="first-login-yes">Yêu cầu đổi</span>
+                                                <span className="first-login-yes">Change Required</span>
                                             ) : (
-                                                <span className="first-login-no">Đã đổi</span>
+                                                <span className="first-login-no">Changed</span>
                                             )}
                                         </td>
                                         <td className="date-cell">{u.created_at || '—'}</td>
@@ -194,17 +198,27 @@ export const UserManagement = () => {
                                             <button 
                                                 className="btn-action btn-edit" 
                                                 onClick={() => openEditModal(u)}
-                                                title="Sửa thông tin"
+                                                title="Edit details"
                                             >
-                                                ✏️ Sửa
+                                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', marginRight: '4px', verticalAlign: 'middle' }}>
+                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                                    <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                                </svg>
+                                                Edit
                                             </button>
                                             {u.id !== currentUser.id && (
                                                 <button 
                                                     className="btn-action btn-delete" 
                                                     onClick={() => handleDeleteUser(u.id, u.username)}
-                                                    title="Xóa người dùng"
+                                                    title="Delete user"
                                                 >
-                                                    🗑️ Xóa
+                                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', marginRight: '4px', verticalAlign: 'middle' }}>
+                                                        <polyline points="3 6 5 6 21 6"/>
+                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                        <line x1="10" y1="11" x2="10" y2="17"/>
+                                                        <line x1="14" y1="11" x2="14" y2="17"/>
+                                                    </svg>
+                                                    Delete
                                                 </button>
                                             )}
                                         </td>
@@ -221,7 +235,7 @@ export const UserManagement = () => {
                 <div className="modal-backdrop-glow">
                     <div className="modal-content-glass">
                         <div className="modal-header">
-                            <h2>{modalMode === 'create' ? 'TẠO TÀI KHOẢN MỚI' : 'SỬA THÔNG TIN TÀI KHOẢN'}</h2>
+                            <h2>{modalMode === 'create' ? 'CREATE NEW ACCOUNT' : 'EDIT ACCOUNT DETAILS'}</h2>
                             <button className="btn-close-modal" onClick={() => setIsModalOpen(false)}>×</button>
                         </div>
 
@@ -229,49 +243,49 @@ export const UserManagement = () => {
                             {error && <div className="modal-error-alert">{error}</div>}
 
                             <div className="form-group-glow">
-                                <label>TÊN ĐĂNG NHẬP</label>
+                                <label>USERNAME</label>
                                 <input
                                     type="text"
                                     value={formUsername}
                                     onChange={(e) => setFormUsername(e.target.value)}
                                     disabled={modalMode === 'edit' || formSubmitting}
-                                    placeholder="Ví dụ: staff1"
+                                    placeholder="Example: staff1"
                                     required
                                 />
                             </div>
 
                             <div className="form-group-glow">
-                                <label>HỌ VÀ TÊN</label>
+                                <label>FULL NAME</label>
                                 <input
                                     type="text"
                                     value={formFullName}
                                     onChange={(e) => setFormFullName(e.target.value)}
                                     disabled={formSubmitting}
-                                    placeholder="Nhập họ và tên..."
+                                    placeholder="Enter full name..."
                                 />
                             </div>
 
                             <div className="form-group-glow">
-                                <label>MẬT KHẨU {modalMode === 'edit' && '(Để trống nếu không đổi)'}</label>
+                                <label>PASSWORD {modalMode === 'edit' && '(Leave blank to keep current)'}</label>
                                 <input
                                     type="password"
                                     value={formPassword}
                                     onChange={(e) => setFormPassword(e.target.value)}
                                     disabled={formSubmitting}
-                                    placeholder={modalMode === 'create' ? "Nhập mật khẩu..." : "Nhập mật khẩu mới..."}
+                                    placeholder={modalMode === 'create' ? "Enter password..." : "Enter new password..."}
                                     required={modalMode === 'create'}
                                 />
                             </div>
 
                             <div className="form-group-glow">
-                                <label>VAI TRÒ</label>
+                                <label>ROLE</label>
                                 <select
                                     value={formRole}
                                     onChange={(e) => setFormRole(e.target.value)}
                                     disabled={formSubmitting || (selectedUserId === currentUser.id)}
                                 >
-                                    <option value="STAFF">STAFF (Nhân viên trực ban)</option>
-                                    <option value="ADMIN">ADMIN (Quản trị viên toàn hệ thống)</option>
+                                    <option value="STAFF">STAFF (Duty Personnel)</option>
+                                    <option value="ADMIN">ADMIN (System Administrator)</option>
                                 </select>
                             </div>
 
@@ -282,14 +296,14 @@ export const UserManagement = () => {
                                     onClick={() => setIsModalOpen(false)}
                                     disabled={formSubmitting}
                                 >
-                                    Hủy
+                                    Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     className="btn-modal btn-modal-submit"
                                     disabled={formSubmitting}
                                 >
-                                    {formSubmitting ? 'ĐANG LƯU...' : 'LƯU THAY ĐỔI'}
+                                    {formSubmitting ? 'SAVING...' : 'SAVE CHANGES'}
                                 </button>
                             </div>
                         </form>

@@ -1,5 +1,5 @@
 /* pages/Dashboard.jsx */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { VideoFeed } from '../components/VideoFeed';
 import { useSystem } from '../store/SystemContext';
 import { api } from '../services/api';
@@ -38,6 +38,80 @@ export const Dashboard = () => {
             console.error("PTZ hard stop error:", err);
         }
     };
+
+    // Operator Hotkeys for PTZ Control
+    useEffect(() => {
+        if (!isCameraOnline || autoScanActive) return;
+
+        const activeKeys = new Set();
+
+        const handleKeyDown = (e) => {
+            if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            const key = e.key;
+            if (activeKeys.has(key)) return;
+
+            if (key === 'ArrowUp') {
+                e.preventDefault();
+                activeKeys.add(key);
+                handlePTZStart('up');
+            } else if (key === 'ArrowDown') {
+                e.preventDefault();
+                activeKeys.add(key);
+                handlePTZStart('down');
+            } else if (key === 'ArrowLeft') {
+                e.preventDefault();
+                activeKeys.add(key);
+                handlePTZStart('left');
+            } else if (key === 'ArrowRight') {
+                e.preventDefault();
+                activeKeys.add(key);
+                handlePTZStart('right');
+            } else if (key === '+' || key === '=') {
+                e.preventDefault();
+                activeKeys.add(key);
+                handlePTZStart('zoom-in');
+            } else if (key === '-' || key === '_') {
+                e.preventDefault();
+                activeKeys.add(key);
+                handlePTZStart('zoom-out');
+            } else if (key === ' ') {
+                e.preventDefault();
+                handleHardStop();
+            }
+        };
+
+        const handleKeyUp = (e) => {
+            const key = e.key;
+            if (!activeKeys.has(key)) return;
+
+            activeKeys.delete(key);
+
+            if (key === 'ArrowUp') {
+                handlePTZStop('up');
+            } else if (key === 'ArrowDown') {
+                handlePTZStop('down');
+            } else if (key === 'ArrowLeft') {
+                handlePTZStop('left');
+            } else if (key === 'ArrowRight') {
+                handlePTZStop('right');
+            } else if (key === '+' || key === '=') {
+                handlePTZStop('zoom-in');
+            } else if (key === '-' || key === '_') {
+                handlePTZStop('zoom-out');
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+        };
+    }, [isCameraOnline, autoScanActive]);
 
     return (
         <div className="dashboard-layout-container">

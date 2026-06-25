@@ -105,6 +105,10 @@ class CameraService:
         self.channel = PTZ_CHANNEL
         self.auth = HTTPDigestAuth(self.username, self.password)
         
+        # Khởi tạo Session của requests để tái sử dụng kết nối TCP và cache Auth challenge
+        self.session = requests.Session()
+        self.session.auth = self.auth
+        
         # Khởi tạo đối tượng luồng đọc camera ngầm
         self.grabber = VideoGrabber(self.camera_url)
 
@@ -148,9 +152,8 @@ class CameraService:
         )
 
         try:
-            response = requests.get(
+            response = self.session.get(
                 url,
-                auth=self.auth,
                 timeout=3
             )
 
@@ -206,13 +209,16 @@ class CameraService:
         return self._send_ptz_command("stop", ptz_code, 0)
 
     def goto_preset(self, preset_id):
+        # Dừng mọi chuyển động đang diễn ra (nếu có) trước khi chuyển sang Preset mới
+        self._send_ptz_command("stop", "Left", 0)
+        time.sleep(0.05) # Độ trễ ngắn để camera xử lý lệnh dừng trước
         # API PTZ Dahua: action=start&code=GotoPreset&arg1=0&arg2=preset_id&arg3=0
         return self._send_ptz_command("start", "GotoPreset", preset_id)
 
     def reboot_camera(self):
         url = f"{self.base_url}/cgi-bin/magicBox.cgi?action=reboot"
         try:
-            response = requests.get(url, auth=self.auth, timeout=3)
+            response = self.session.get(url, timeout=3)
             print("CAMERA REBOOT STATUS:", response.status_code)
             print("CAMERA REBOOT RESPONSE:", response.text)
             return response.status_code == 200 and "OK" in response.text
@@ -236,7 +242,7 @@ class CameraService:
         print("Di chuyển về Preset Home thất bại, thử gọi native goHome.")
         url = f"{self.base_url}/cgi-bin/ptz.cgi?action=goHome&channel={self.channel}"
         try:
-            response = requests.get(url, auth=self.auth, timeout=3)
+            response = self.session.get(url, timeout=3)
             print("PTZ NATIVE goHome URL:", url)
             print("PTZ NATIVE goHome STATUS:", response.status_code)
             print("PTZ NATIVE goHome RESPONSE:", response.text)
@@ -253,7 +259,7 @@ class CameraService:
         print("Gọi native goHome thất bại, thử gọi PowerOnSelfTest.")
         url = f"{self.base_url}/cgi-bin/ptz.cgi?action=custom&code=PowerOnSelfTest&channel={self.channel}"
         try:
-            response = requests.get(url, auth=self.auth, timeout=3)
+            response = self.session.get(url, timeout=3)
             print("PTZ SELF-TEST URL:", url)
             print("PTZ SELF-TEST STATUS:", response.status_code)
             print("PTZ SELF-TEST RESPONSE:", response.text)

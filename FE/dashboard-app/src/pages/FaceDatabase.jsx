@@ -47,7 +47,7 @@ export const FaceDatabase = () => {
     const handleRegisterSubmit = async (e) => {
         e.preventDefault();
         if (!regName || !regFile) {
-            setRegStatus({ success: false, message: "Vui lòng nhập tên và chọn ảnh." });
+            setRegStatus({ success: false, message: "Please enter a name and select an image." });
             return;
         }
         setIsRegistering(true);
@@ -56,16 +56,16 @@ export const FaceDatabase = () => {
         try {
             const res = await api.registerFace(regName, regRole, regFile);
             if (res.success) {
-                setRegStatus({ success: true, message: "Đăng ký gương mặt thành công!" });
+                setRegStatus({ success: true, message: "Face registered successfully!" });
                 setRegName("");
                 setRegFile(null);
                 if (fileInputRef.current) fileInputRef.current.value = "";
                 fetchPeople();
             } else {
-                setRegStatus({ success: false, message: res.message || "Đăng ký thất bại." });
+                setRegStatus({ success: false, message: res.message || "Registration failed." });
             }
         } catch (err) {
-            setRegStatus({ success: false, message: "Lỗi kết nối tới backend." });
+            setRegStatus({ success: false, message: "Backend connection error." });
         } finally {
             setIsRegistering(false);
         }
@@ -79,10 +79,10 @@ export const FaceDatabase = () => {
             if (res.success) {
                 setVerResult(res);
             } else {
-                alert(res.message || "Không thể thực hiện đối khớp qua camera.");
+                alert(res.message || "Could not perform matching via camera.");
             }
         } catch (err) {
-            alert("Lỗi kết nối tới backend.");
+            alert("Backend connection error.");
         } finally {
             setIsVerifying(false);
         }
@@ -97,10 +97,10 @@ export const FaceDatabase = () => {
             if (res.success) {
                 setVerResult(res);
             } else {
-                alert(res.message || "Không tìm thấy gương mặt.");
+                alert(res.message || "No face detected.");
             }
         } catch (err) {
-            alert("Lỗi kết nối tới backend.");
+            alert("Backend connection error.");
         } finally {
             setIsVerifying(false);
         }

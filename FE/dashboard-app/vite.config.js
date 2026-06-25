@@ -18,6 +18,10 @@ export default defineConfig({
         target: `ws://${BACKEND_IP}:8000`,
         ws: true,
         changeOrigin: true,
+      },
+      '/static': {
+        target: `http://${BACKEND_IP}:8000`,
+        changeOrigin: true,
       }
     }
   }

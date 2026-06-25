@@ -26,7 +26,20 @@ export const AdminOverview = () => {
             <div className="admin-stats-grid">
                 {/* Hardware NPU */}
                 <div className="admin-stat-card glow-cyan">
-                    <div className="stat-icon">🧠</div>
+                    <div className="stat-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '24px' }}>
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--accent-cyan)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 4px var(--accent-cyan))' }}>
+                            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
+                            <rect x="9" y="9" width="6" height="6"/>
+                            <line x1="9" y1="1" x2="9" y2="4"/>
+                            <line x1="15" y1="1" x2="15" y2="4"/>
+                            <line x1="9" y1="20" x2="9" y2="23"/>
+                            <line x1="15" y1="20" x2="15" y2="23"/>
+                            <line x1="20" y1="9" x2="23" y2="9"/>
+                            <line x1="20" y1="15" x2="23" y2="15"/>
+                            <line x1="1" y1="9" x2="4" y2="9"/>
+                            <line x1="1" y1="15" x2="4" y2="15"/>
+                        </svg>
+                    </div>
                     <div className="stat-label">AI NPU ACCELERATOR LOAD</div>
                     <div className="stat-value">{npuLoad.toFixed(1)}%</div>
                     <div className="stat-desc">Hailo-8L Neural Processing Unit</div>
@@ -37,7 +50,11 @@ export const AdminOverview = () => {
 
                 {/* System Temp */}
                 <div className="admin-stat-card glow-amber">
-                    <div className="stat-icon">🌡️</div>
+                    <div className="stat-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '24px' }}>
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--accent-amber)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 4px var(--accent-amber))' }}>
+                            <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+                        </svg>
+                    </div>
                     <div className="stat-label">CPU CORE TEMPERATURE</div>
                     <div className="stat-value">{systemTemp.toFixed(1)}°C</div>
                     <div className="stat-desc">Raspberry Pi 5 SoC Thermal sensor</div>
@@ -48,7 +65,11 @@ export const AdminOverview = () => {
 
                 {/* Overall Threat status */}
                 <div className={`admin-stat-card ${overallAlertLevel === 'danger' ? 'glow-red' : (overallAlertLevel === 'warning' ? 'glow-amber' : 'glow-green')}`}>
-                    <div className="stat-icon">🛡️</div>
+                    <div className="stat-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '24px' }}>
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke={overallAlertLevel === 'danger' ? 'var(--accent-red)' : (overallAlertLevel === 'warning' ? 'var(--accent-amber)' : '#10b981')} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 4px ${overallAlertLevel === 'danger' ? 'var(--accent-red)' : (overallAlertLevel === 'warning' ? 'var(--accent-amber)' : '#10b981')})` }}>
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </div>
                     <div className="stat-label">SYSTEM THREAT LEVEL</div>
                     <div className="stat-value" style={{ color: overallAlertLevel === 'danger' ? 'var(--accent-red)' : (overallAlertLevel === 'warning' ? 'var(--accent-amber)' : '#10b981') }}>
                         {overallAlertLevel.toUpperCase()}

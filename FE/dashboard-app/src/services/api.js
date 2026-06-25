@@ -126,6 +126,15 @@ export const api = {
     },
 
     /**
+     * Save current camera position as the preset for a specific zone
+     */
+    async setZonePreset(zoneId) {
+        return request(`${API_BASE_URL}/api/camera/zone/${zoneId}/set`, {
+            method: "POST"
+        });
+    },
+
+    /**
      * Control the sprinkler state (ON / OFF)
      */
     async controlSprinkler(action) {

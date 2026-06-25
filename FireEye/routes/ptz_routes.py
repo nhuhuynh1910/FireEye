@@ -81,3 +81,22 @@ def get_camera_zones():
             4: {"name": "Zone 4", "angle": 135}
         }
     }
+
+
+@router.post("/api/camera/zone/{zone_id}/set")
+def camera_set_zone(zone_id: int):
+    from config.settings import ZONE_CONFIG
+    zone_info = ZONE_CONFIG.get(zone_id)
+    if not zone_info or "preset" not in zone_info:
+        return {
+            "success": False,
+            "message": f"Zone {zone_id} is not configured with a preset"
+        }
+    
+    preset_id = zone_info["preset"]
+    ok = camera_service.set_preset(preset_id)
+    return {
+        "success": ok,
+        "action": f"set_zone_{zone_id}_preset",
+        "preset_id": preset_id
+    }

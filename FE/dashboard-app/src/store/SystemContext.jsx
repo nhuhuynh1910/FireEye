@@ -1,5 +1,5 @@
 /* store/SystemContext.jsx */
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { api, API_BASE_URL, BACKEND_IP } from '../services/api';
 
 const SystemContext = createContext(null);
@@ -36,6 +36,7 @@ export const SystemProvider = ({ children }) => {
     
     // Auto Scan PTZ state
     const [autoScanActive, setAutoScanActive] = useState(false);
+    const [activeZoneId, setActiveZoneId] = useState(null);
 
     // PTZ panel visibility state
     const [isPTZVisible, setIsPTZVisible] = useState(true);
@@ -49,6 +50,10 @@ export const SystemProvider = ({ children }) => {
 
     // MQTT connection state
     const [mqttConnected, setMqttConnected] = useState(false);
+
+    // Safety Voting multi-sig session states
+    const [activeVote, setActiveVote] = useState(null);
+    const safetyWSRef = useRef(null);
 
     // Zone sensor telemetries state (from ESP32 JSON data)
     const [zones, setZones] = useState({
@@ -208,6 +213,20 @@ export const SystemProvider = ({ children }) => {
         }
     }, [isBackendConnected, sensorNode, fetchEvents]);
 
+    // Submit multi-sig consensus vote choice
+    const submitVote = useCallback((choice) => {
+        if (safetyWSRef.current && safetyWSRef.current.readyState === WebSocket.OPEN && activeVote) {
+            safetyWSRef.current.send(JSON.stringify({
+                type: "SUBMIT_VOTE",
+                session_token: activeVote.session_token,
+                choice: choice
+            }));
+            console.log(`Submitted vote [${choice}] for session ${activeVote.session_token}`);
+        } else {
+            console.warn("Safety WebSocket is not open or no active vote session exists.");
+        }
+    }, [activeVote]);
+
     // WebSocket real-time AI alerts
     useEffect(() => {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -276,6 +295,174 @@ export const SystemProvider = ({ children }) => {
             }
         };
     }, []);
+
+    // Get safety WebSocket URL
+    const getSafetyWSUrl = () => {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const host = BACKEND_IP ? (BACKEND_IP.includes(":") ? BACKEND_IP : `${BACKEND_IP}:8000`) : window.location.host;
+        return `${protocol}//${host}/api/v1/safety/ws`;
+    };
+
+    // WebSocket real-time safety control/voting alerts
+    useEffect(() => {
+        let reconnectTimeout;
+        let isClosed = false;
+
+        const connectSafetyWS = () => {
+            if (isClosed) return;
+
+            if (safetyWSRef.current) {
+                safetyWSRef.current.onclose = null;
+                safetyWSRef.current.onerror = null;
+                safetyWSRef.current.onmessage = null;
+                try { safetyWSRef.current.close(); } catch (e) { /* ignore */ }
+            }
+
+            const wsUrl = getSafetyWSUrl();
+            console.log("Connecting to Safety WebSocket:", wsUrl);
+            const socket = new WebSocket(wsUrl);
+            safetyWSRef.current = socket;
+
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log("Safety WS received:", data);
+                    
+                    if (data.type === "SYSTEM_STATUS") {
+                        if (data.active_sessions && data.active_sessions.length > 0) {
+                            const pending = data.active_sessions.find(s => s.status === "PENDING");
+                            if (pending) {
+                                setActiveVote(pending);
+                            }
+                        }
+                    } else if (data.type === "VOTE_REQUEST") {
+                        setActiveVote(data);
+                    } else if (data.type === "VOTE_COUNT_UPDATE") {
+                        setActiveVote(prev => {
+                            if (prev && prev.session_token === data.session_token) {
+                                return {
+                                    ...prev,
+                                    votes_approve: data.votes_approve,
+                                    votes_reject: data.votes_reject
+                                };
+                            }
+                            return prev;
+                        });
+                    } else if (data.type === "VOTING_FINISHED") {
+                        setActiveVote(null);
+                        fetchEvents();
+                    }
+                } catch (err) {
+                    console.error("Failed to parse Safety WebSocket data:", err);
+                }
+            };
+
+            socket.onclose = () => {
+                if (isClosed) return;
+                console.log("Safety WebSocket disconnected. Reconnecting in 3 seconds...");
+                reconnectTimeout = setTimeout(connectSafetyWS, 3000);
+            };
+
+            socket.onerror = (err) => {
+                if (isClosed) return;
+                console.error("Safety WebSocket error:", err);
+                socket.close();
+            };
+        };
+
+        connectSafetyWS();
+
+        return () => {
+            isClosed = true;
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (safetyWSRef.current) {
+                safetyWSRef.current.onclose = null;
+                safetyWSRef.current.onerror = null;
+                safetyWSRef.current.onmessage = null;
+                safetyWSRef.current.close();
+            }
+        };
+    }, [fetchEvents]);
+
+    // Web Audio API Synthesizer Alert
+    useEffect(() => {
+        let osc1, osc2, gainNode, audioCtx;
+        let intervalId;
+
+        if (overallAlertLevel === "safe") {
+            return;
+        }
+
+        const startSynthesizer = () => {
+            try {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContextClass();
+                gainNode = audioCtx.createGain();
+                gainNode.connect(audioCtx.destination);
+                gainNode.gain.setValueAtTime(0.0, audioCtx.currentTime);
+
+                if (overallAlertLevel === "danger") {
+                    // Warbling fire siren
+                    osc1 = audioCtx.createOscillator();
+                    osc2 = audioCtx.createOscillator();
+
+                    osc1.type = "sawtooth";
+                    osc2.type = "sine";
+
+                    osc1.frequency.setValueAtTime(880, audioCtx.currentTime); 
+                    osc2.frequency.setValueAtTime(2.0, audioCtx.currentTime); // 2Hz LFO
+                    
+                    const lfoGain = audioCtx.createGain();
+                    lfoGain.gain.setValueAtTime(150, audioCtx.currentTime);
+
+                    osc2.connect(lfoGain);
+                    lfoGain.connect(osc1.frequency);
+                    osc1.connect(gainNode);
+
+                    osc1.start();
+                    osc2.start();
+
+                    gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.1);
+                    
+                    let toggle = true;
+                    intervalId = setInterval(() => {
+                        if (!audioCtx || audioCtx.state === "closed") return;
+                        if (toggle) {
+                            gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.2);
+                        } else {
+                            gainNode.gain.linearRampToValueAtTime(0.05, audioCtx.currentTime + 0.2);
+                        }
+                        toggle = !toggle;
+                    }, 500);
+
+                } else if (overallAlertLevel === "warning") {
+                    // Warning beeps
+                    osc1 = audioCtx.createOscillator();
+                    osc1.type = "sine";
+                    osc1.frequency.setValueAtTime(1200, audioCtx.currentTime);
+                    osc1.connect(gainNode);
+                    osc1.start();
+
+                    intervalId = setInterval(() => {
+                        if (!audioCtx || audioCtx.state === "closed") return;
+                        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                        gainNode.gain.setValueAtTime(0.0, audioCtx.currentTime + 0.15);
+                    }, 1000);
+                }
+            } catch (err) {
+                console.warn("Failed to start Web Audio synthesizer (requires page interaction):", err);
+            }
+        };
+
+        startSynthesizer();
+
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+            if (osc1) { try { osc1.stop(); } catch(e){} }
+            if (osc2) { try { osc2.stop(); } catch(e){} }
+            if (audioCtx) { try { audioCtx.close(); } catch(e){} }
+        };
+    }, [overallAlertLevel]);
 
     // API Polling Loop
     useEffect(() => {
@@ -386,6 +573,7 @@ export const SystemProvider = ({ children }) => {
             if (isBackendConnected && isCameraOnline) {
                 try {
                     const zoneId = scanZones[currentZoneIndex];
+                    setActiveZoneId(zoneId);
                     await api.moveToZone(zoneId);
                     currentZoneIndex = (currentZoneIndex + 1) % scanZones.length;
                 } catch (err) {
@@ -402,6 +590,7 @@ export const SystemProvider = ({ children }) => {
             clearInterval(interval);
             // Return to home position when scanning stops
             if (isBackendConnected && isCameraOnline) {
+                setActiveZoneId(null);
                 api.goHome().catch(err => console.error("Failed to return camera to home on disable:", err));
             }
         };
@@ -435,6 +624,8 @@ export const SystemProvider = ({ children }) => {
             triggerEmergencyStop,
             autoScanActive,
             setAutoScanActive,
+            activeZoneId,
+            setActiveZoneId,
             isPTZVisible,
             setIsPTZVisible,
             notifications,
@@ -447,7 +638,9 @@ export const SystemProvider = ({ children }) => {
             fetchMQTTStatus,
             zones,
             viewMode,
-            setViewMode
+            setViewMode,
+            activeVote,
+            submitVote
         }}>
             {children}
         </SystemContext.Provider>

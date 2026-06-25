@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
                 setIsAuthenticated(true);
                 return res.user;
             }
-            throw new Error("Đăng nhập thất bại");
+            throw new Error("Login failed");
         } catch (err) {
             setIsAuthenticated(false);
             setUser(null);

@@ -2,6 +2,7 @@
 import React from 'react';
 import { useSystem } from '../../store/SystemContext';
 import { api } from '../../services/api';
+import { VideoFeed } from '../../components/VideoFeed';
 
 export const AdminCameraConfig = () => {
     const {
@@ -10,11 +11,14 @@ export const AdminCameraConfig = () => {
         autoScanActive,
         setAutoScanActive,
         zones,
-        toggleZoneSprinkler
+        toggleZoneSprinkler,
+        activeZoneId,
+        setActiveZoneId
     } = useSystem();
 
     const handlePTZStart = async (action) => {
         if (!isCameraOnline || autoScanActive) return;
+        setActiveZoneId(null); // Clear focus zone during manual rotation
         try {
             await api.sendPTZCommand(action);
         } catch (err) {
@@ -43,6 +47,7 @@ export const AdminCameraConfig = () => {
     const handleGoHome = async () => {
         if (!isCameraOnline || !isBackendConnected) return;
         setAutoScanActive(false);
+        setActiveZoneId(null); // Return to default Home has no active zone focus
         try {
             await api.goHome();
             alert("Camera returned to default Home position.");
@@ -64,9 +69,27 @@ export const AdminCameraConfig = () => {
         }
     };
 
+    const handleSetZonePreset = async (zoneId, zoneName) => {
+        if (!isCameraOnline || !isBackendConnected) return;
+        if (!window.confirm(`Overwrite current camera position as the preset for ${zoneName}?`)) return;
+        try {
+            const res = await api.setZonePreset(zoneId);
+            if (res.success) {
+                setActiveZoneId(zoneId); // Highlight as the active saved sector
+                alert(`Successfully saved current position as preset for ${zoneName}!`);
+            } else {
+                alert(`Failed to save preset: ${res.message || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error(`PTZ set zone preset error:`, err);
+            alert(`Failed to save preset: ${err.message}`);
+        }
+    };
+
     const handleMoveToZone = async (zoneId) => {
         if (!isCameraOnline || !isBackendConnected) return;
         setAutoScanActive(false);
+        setActiveZoneId(zoneId); // Focus the sector being navigated to
         try {
             await api.moveToZone(zoneId);
         } catch (err) {
@@ -83,9 +106,17 @@ export const AdminCameraConfig = () => {
 
             <div className="admin-grid-layout" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', marginTop: '16px' }}>
                 
-                {/* Left Side: PTZ Joystick and Auto Scan */}
-                <div className="admin-config-card">
-                    <h3 className="section-title">HARDWARE PTZ JOYSTICK</h3>
+                {/* Left Side: Live Feed & PTZ Joystick */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* Live Viewport */}
+                    <div className="admin-config-card" style={{ padding: '12px' }}>
+                        <h3 className="section-title" style={{ marginBottom: '10px' }}>CAMERA LIVE VIEW</h3>
+                        <VideoFeed />
+                    </div>
+
+                    {/* PTZ Joystick and Auto Scan */}
+                    <div className="admin-config-card">
+                        <h3 className="section-title">HARDWARE PTZ JOYSTICK</h3>
                     <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '20px' }}>
                         Manual overrides are disabled during active patrol auto-scanning.
                     </p>
@@ -194,6 +225,7 @@ export const AdminCameraConfig = () => {
                         </button>
                     </div>
                 </div>
+                </div>
 
                 {/* Right Side: Zones and Sprinklers manual override */}
                 <div className="admin-config-card">
@@ -204,7 +236,7 @@ export const AdminCameraConfig = () => {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {[1, 2, 3, 4].map(zoneId => {
-                            const zoneData = zones[zoneId] || { pump: "OFF", temperature: 0.0, humidity: 0.0, gas: 1 };
+                            const zoneData = zones[zoneId] || { pump: "OFF", temperature: 0.0, humidity: 0.0, gas: 1, online: false };
                             const zoneName = {
                                 1: "Zone 01: Warehouse North",
                                 2: "Zone 02: Loading Dock",
@@ -212,37 +244,79 @@ export const AdminCameraConfig = () => {
                                 4: "Zone 04: Office Suite"
                             }[zoneId];
 
+                            const isOnline = zoneData.online !== false;
+                            const isActiveZone = zoneId === activeZoneId;
+
                             return (
-                                <div key={zoneId} style={{ display: 'flex', flexDirection: 'column', padding: '12px', background: 'rgba(6, 10, 19, 0.4)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                                <div 
+                                    key={zoneId} 
+                                    style={{ 
+                                        display: 'flex', 
+                                        flexDirection: 'column', 
+                                        padding: '12px', 
+                                        background: isActiveZone ? 'rgba(6, 182, 212, 0.1)' : 'rgba(6, 10, 19, 0.4)', 
+                                        border: isActiveZone ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)', 
+                                        borderRadius: '6px', 
+                                        opacity: isOnline ? 1 : 0.8,
+                                        boxShadow: isActiveZone ? '0 0 15px rgba(6, 182, 212, 0.2)' : 'none',
+                                        transition: 'all 0.3s ease'
+                                    }}
+                                >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-cyan)' }}>{zoneName}</span>
-                                        <span className={`status-dot-badge ${zoneData.pump === 'ON' ? 'online' : 'offline'}`} style={{ fontSize: '9px' }}>
-                                            PUMP: {zoneData.pump}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            <span style={{ fontSize: '12px', fontWeight: 'bold', color: isActiveZone ? '#ffffff' : 'var(--accent-cyan)' }}>
+                                                {zoneName}
+                                            </span>
+                                            {isActiveZone && (
+                                                <span style={{ fontSize: '9px', color: 'var(--accent-cyan)', fontWeight: 'bold', letterSpacing: '0.5px', textShadow: '0 0 4px var(--accent-cyan)' }}>
+                                                    [ CAMERA POINTING HERE ]
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className={`status-dot-badge ${!isOnline ? 'offline' : (zoneData.pump === 'ON' ? 'online' : 'offline')}`} style={{ fontSize: '9px' }}>
+                                            {!isOnline ? 'OFFLINE' : `PUMP: ${zoneData.pump}`}
                                         </span>
                                     </div>
                                     
-                                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                                    <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
                                         <button 
                                             className="btn-tech-action" 
                                             onClick={() => handleMoveToZone(zoneId)} 
-                                            style={{ flexGrow: 1, fontSize: '10px', padding: '6px', marginTop: 0 }}
+                                            style={{ flexGrow: 1, fontSize: '9px', padding: '6px 2px', marginTop: 0 }}
                                             disabled={autoScanActive}
                                         >
-                                            MOVE CAMERA HERE
+                                            MOVE CAMERA
+                                        </button>
+                                        <button 
+                                            className="btn-tech-action" 
+                                            onClick={() => handleSetZonePreset(zoneId, zoneName)} 
+                                            style={{ 
+                                                flexGrow: 1, 
+                                                fontSize: '9px', 
+                                                padding: '6px 2px', 
+                                                marginTop: 0,
+                                                borderColor: '#f59e0b',
+                                                color: '#f59e0b'
+                                            }}
+                                            disabled={autoScanActive}
+                                        >
+                                            SAVE POSITION
                                         </button>
                                         <button 
                                             className="btn-tech-action" 
                                             onClick={() => toggleZoneSprinkler(zoneId)} 
                                             style={{ 
                                                 flexGrow: 1, 
-                                                fontSize: '10px', 
-                                                padding: '6px', 
+                                                fontSize: '9px', 
+                                                padding: '6px 2px', 
                                                 marginTop: 0,
-                                                borderColor: zoneData.pump === 'ON' ? 'var(--accent-red)' : 'var(--accent-cyan)',
-                                                color: zoneData.pump === 'ON' ? 'var(--accent-red)' : 'var(--accent-cyan)'
+                                                borderColor: !isOnline ? 'var(--text-muted)' : (zoneData.pump === 'ON' ? 'var(--accent-red)' : 'var(--accent-cyan)'),
+                                                color: !isOnline ? 'var(--text-muted)' : (zoneData.pump === 'ON' ? 'var(--accent-red)' : 'var(--accent-cyan)'),
+                                                opacity: !isOnline ? 0.5 : 1
                                             }}
+                                            disabled={!isOnline}
                                         >
-                                            {zoneData.pump === 'ON' ? 'FORCE PUMP OFF' : 'FORCE PUMP ON'}
+                                            {!isOnline ? 'PUMP N/A' : (zoneData.pump === 'ON' ? 'PUMP OFF' : 'PUMP ON')}
                                         </button>
                                     </div>
                                 </div>

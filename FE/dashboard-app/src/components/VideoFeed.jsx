@@ -21,6 +21,7 @@ export const VideoFeed = () => {
     const [rotation, setRotation] = useState(0);
     const [scale, setScale] = useState(1);
     const wrapperRef = useRef(null);
+    const canvasRef = useRef(null);
 
     const handleRotate = () => {
         setRotation(prev => (prev + 90) % 360);
@@ -82,6 +83,40 @@ export const VideoFeed = () => {
         boxColor = "#0ea5e9";
         boxGlow = "rgba(14, 165, 233, 0.4)";
     }
+
+    // Draw dynamic AI bounding boxes on canvas overlay
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 960, 540);
+
+        if (!hasBbox || overallAlertLevel === "safe") {
+            return;
+        }
+
+        const [x1, y1, x2, y2] = aiBbox;
+        const width = x2 - x1;
+        const height = y2 - y1;
+
+        // Bounding box style configuration
+        ctx.strokeStyle = boxColor;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = boxGlow;
+        ctx.shadowBlur = 10;
+        ctx.strokeRect(x1, y1, width, height);
+
+        // Target HUD label background
+        ctx.fillStyle = boxColor;
+        ctx.shadowBlur = 0;
+        ctx.fillRect(x1 - 1, y1 - 25, Math.max(120, width * 0.5), 25);
+
+        // Text display details
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 12px monospace";
+        ctx.fillText(`${targetClass}: ${(aiConfidence * 100).toFixed(0)}%`, x1 + 8, y1 - 8);
+    }, [aiBbox, overallAlertLevel, boxColor, boxGlow, targetClass, aiConfidence, hasBbox]);
 
     return (
         <div className={`video-workspace-card ${isAlerting && showLive ? 'alert-active' : ''}`}>
@@ -168,31 +203,21 @@ export const VideoFeed = () => {
 
                         {/* YOLOv8 VISION HUD OVERLAY */}
                         <div className="yolov8-hud-overlay">
-                            {/* Bounding Box Drawing */}
-                            {shouldShowHtmlBbox && (
-                                <div
-                                    className="hud-target-box"
-                                    style={{
-                                        left: `${boxLeft}%`,
-                                        top: `${boxTop}%`,
-                                        width: `${boxWidth}%`,
-                                        height: `${boxHeight}%`,
-                                        borderColor: boxColor,
-                                        boxShadow: `0 0 15px ${boxGlow}, inset 0 0 10px ${boxGlow.replace("0.4", "0.2")}`
-                                    }}
-                                >
-                                    <div 
-                                        className="hud-target-label"
-                                        style={{
-                                            background: boxColor,
-                                            boxShadow: `0 -2px 8px ${boxGlow}`
-                                        }}
-                                    >
-                                        <span className="hud-alert-pulse"></span>
-                                        {targetClass}: {(aiConfidence * 100).toFixed(0)}%
-                                    </div>
-                                </div>
-                            )}
+                            {/* Bounding Box Drawing via Responsive Canvas */}
+                            <canvas 
+                                ref={canvasRef} 
+                                width={960} 
+                                height={540} 
+                                style={{ 
+                                    position: 'absolute', 
+                                    top: 0, 
+                                    left: 0, 
+                                    width: '100%', 
+                                    height: '100%', 
+                                    pointerEvents: 'none',
+                                    zIndex: 15
+                                }}
+                            />
 
                             {/* Corner Brackets */}
                             <div className="hud-corner-bracket hud-bracket-tl"></div>

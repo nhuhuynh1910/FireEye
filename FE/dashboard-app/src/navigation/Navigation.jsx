@@ -4,6 +4,7 @@ import { useSystem } from '../store/SystemContext';
 import { Dashboard } from '../pages/Dashboard';
 import { FaceDatabase } from '../pages/FaceDatabase';
 import { EventLogs } from '../pages/EventLogs';
+import { Settings } from '../pages/Settings';
 import { AdminLayout } from '../components/AdminLayout';
 
 export const Navigation = () => {
@@ -16,6 +17,8 @@ export const Navigation = () => {
             return <FaceDatabase />;
         case 'events':
             return <EventLogs />;
+        case 'settings':
+            return <Settings />;
         case 'admin':
             return <AdminLayout />;
         default:

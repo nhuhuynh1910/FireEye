@@ -145,7 +145,11 @@ export const AdminFaceSettings = () => {
                                     onClick={() => fileInputRef.current?.click()}
                                     style={{ padding: '20px', border: '1px dashed var(--border-color)', borderRadius: '6px', textAlign: 'center', cursor: 'pointer', background: 'rgba(6,10,19,0.3)' }}
                                 >
-                                    <span style={{ fontSize: '20px', display: 'block', marginBottom: '8px' }}>📁</span>
+                                    <span style={{ display: 'block', marginBottom: '8px', color: 'var(--accent-cyan)' }}>
+                                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block' }}>
+                                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                                        </svg>
+                                    </span>
                                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                         {regFile ? regFile.name : "Select or Drop Image File"}
                                     </span>

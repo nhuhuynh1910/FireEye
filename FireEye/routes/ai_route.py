@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
@@ -118,7 +119,7 @@ async def ai_detect(data: AiDetectRequest):
     event_id = None
 
     if event_type:
-        snapshot_path = capture_snapshot(event_type)
+        snapshot_path = await asyncio.to_thread(capture_snapshot, event_type)
 
         message = f"AI phát hiện {event_type} - mức độ {risk_level}"
 

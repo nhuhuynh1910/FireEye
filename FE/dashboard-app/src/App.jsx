@@ -7,12 +7,14 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './components/Login';
 import { ChangePassword } from './components/ChangePassword';
 import { AdminLayout } from './components/AdminLayout';
+import { SafetyVoteModal } from './components/SafetyVoteModal';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import logoImg from './assets/image-removebg-preview.jpg';
 import './App.css';
 
 import { API_BASE_URL } from './services/api';
 
-const MainLayout = () => {
+const MainLayout = ({ onOpenChangePassword }) => {
     const {
         activeTab,
         setActiveTab,
@@ -80,14 +82,6 @@ const MainLayout = () => {
                     >
                         Event Logs
                     </button>
-                    {user?.role === 'ADMIN' && (
-                        <button
-                            className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('settings')}
-                        >
-                            Settings
-                        </button>
-                    )}
                 </nav>
 
                 {/* Controls and Indicators */}
@@ -168,7 +162,12 @@ const MainLayout = () => {
                     
                     {/* User profile & logout controls */}
                     <div className="navbar-user-info">
-                        <span className="user-icon">👤</span>
+                        <span className="user-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                        </span>
                         <div className="user-labels">
                             <span className="user-name">{user?.full_name || user?.username}</span>
                             <span className="user-role">{user?.role}</span>
@@ -176,13 +175,20 @@ const MainLayout = () => {
                     </div>
 
                     {user?.role === 'ADMIN' && (
-                        <button className="btn-admin-console-header" onClick={() => setViewMode('admin')} title="Open Administrator Console">
-                            🛡️ Admin Console
+                        <button className="btn-admin-console-header" onClick={() => setViewMode('admin')} title="Open Administrator Console" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block' }}>
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            </svg>
+                            Admin Console
                         </button>
                     )}
 
-                    <button className="btn-logout-header" onClick={logout} title="Đăng xuất khỏi hệ thống">
-                        Đăng xuất
+                    <button className="btn-change-password-header" onClick={onOpenChangePassword} title="Change account password">
+                        Change Password
+                    </button>
+
+                    <button className="btn-logout-header" onClick={logout} title="Logout from system">
+                        Logout
                     </button>
 
                     <div className="system-status-indicator">
@@ -222,7 +228,7 @@ const AppContent = () => {
             <div className="auth-loading-screen">
                 <div className="loader-container">
                     <span className="spinner"></span>
-                    <p>ĐANG XÁC THỰC HỆ THỐNG FIREEYE...</p>
+                    <p>AUTHENTICATING FIREEYE SYSTEM...</p>
                 </div>
             </div>
         );
@@ -245,7 +251,20 @@ const AppContent = () => {
 
 const AppViewport = () => {
     const { viewMode } = useSystem();
-    return viewMode === 'admin' ? <AdminLayout /> : <MainLayout />;
+    const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+    return (
+        <>
+            {viewMode === 'admin' ? (
+                <AdminLayout onOpenChangePassword={() => setShowChangePasswordModal(true)} />
+            ) : (
+                <MainLayout onOpenChangePassword={() => setShowChangePasswordModal(true)} />
+            )}
+            <SafetyVoteModal />
+            {showChangePasswordModal && (
+                <ChangePasswordModal onClose={() => setShowChangePasswordModal(false)} />
+            )}
+        </>
+    );
 };
 
 function App() {

@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import logoImg from '../assets/image-removebg-preview.jpg';
 
-export const ChangePassword = () => {
-    const { logout, updateFirstLoginFlag } = useAuth();
+export const ChangePasswordModal = ({ onClose }) => {
     const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -12,13 +9,34 @@ export const ChangePassword = () => {
     const [success, setSuccess] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
+    const validatePassword = (pwd) => {
+        if (pwd.length < 8) {
+            return "Password must be at least 8 characters long.";
+        }
+        if (!/[A-Z]/.test(pwd)) {
+            return "Password must contain at least one uppercase letter (A-Z).";
+        }
+        if (!/[a-z]/.test(pwd)) {
+            return "Password must contain at least one lowercase letter (a-z).";
+        }
+        if (!/\d/.test(pwd)) {
+            return "Password must contain at least one digit (0-9).";
+        }
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) {
+            return "Password must contain at least one special character (e.g. !@#$%^&*).";
+        }
+        return "";
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setSuccess('');
 
-        if (newPassword.length < 6) {
-            setError('New password must be at least 6 characters long.');
+        // Client-side strength check
+        const strengthError = validatePassword(newPassword);
+        if (strengthError) {
+            setError(strengthError);
             return;
         }
 
@@ -36,55 +54,57 @@ export const ChangePassword = () => {
         try {
             const res = await api.changePassword(oldPassword, newPassword);
             if (res && res.success) {
-                setSuccess('Password changed successfully! Accessing system...');
+                setSuccess('Password changed successfully!');
                 setTimeout(() => {
-                    updateFirstLoginFlag();
+                    onClose();
                 }, 1500);
+            } else {
+                setError(res.message || 'An error occurred while changing the password.');
             }
         } catch (err) {
-            setError(err.message || 'An error occurred while changing password.');
+            setError(err.message || 'An error occurred while changing the password.');
         } finally {
             setSubmitting(false);
         }
     };
 
     return (
-        <div className="login-screen-container">
-            <div className="glow-sphere-1"></div>
-            <div className="glow-sphere-2"></div>
- 
-            <div className="login-glass-card">
-                <div className="login-header">
-                    <img src={logoImg} alt="FireEye Logo" className="login-logo-glow" />
-                    <h1 className="login-title">CHANGE DEFAULT PASSWORD</h1>
-                    <p className="login-subtitle">To ensure system security, you are required to change the default password on your first login.</p>
-                </div>
- 
-                <form onSubmit={handleSubmit} className="login-form">
-                        <div className="login-error-alert" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span className="error-icon" style={{ display: 'flex', alignItems: 'center' }}>
+        <div className="modal-backdrop-glow">
+            <div className="modal-content-glass">
+                <header className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border-color)' }}>
+                    <h2>CHANGE PASSWORD</h2>
+                    <button className="btn-close-modal" onClick={onClose} disabled={submitting}>&times;</button>
+                </header>
+
+                <form onSubmit={handleSubmit} className="modal-form">
+                    {error && (
+                        <div className="modal-error-alert" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ display: 'flex', alignItems: 'center' }}>
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                                     <line x1="12" y1="9" x2="12" y2="13"/>
                                     <line x1="12" y1="17" x2="12.01" y2="17"/>
                                 </svg>
                             </span>
-                            <span className="error-text">{error}</span>
+                            <span>{error}</span>
                         </div>
- 
-                        <div className="login-success-alert" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span className="success-icon" style={{ display: 'flex', alignItems: 'center' }}>
+                    )}
+
+                    {success && (
+                        <div className="modal-error-alert" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', color: '#a7f3d0' }}>
+                            <span style={{ display: 'flex', alignItems: 'center' }}>
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                     <polyline points="20 6 9 17 4 12"/>
                                 </svg>
                             </span>
-                            <span className="success-text">{success}</span>
+                            <span>{success}</span>
                         </div>
- 
-                    <div className="input-group-glow">
-                        <label htmlFor="old-password">CURRENT PASSWORD (DEFAULT)</label>
+                    )}
+
+                    <div className="form-group-glow">
+                        <label htmlFor="modal-old-password">CURRENT PASSWORD</label>
                         <input
-                            id="old-password"
+                            id="modal-old-password"
                             type="password"
                             placeholder="Enter current password..."
                             value={oldPassword}
@@ -93,24 +113,24 @@ export const ChangePassword = () => {
                             required
                         />
                     </div>
- 
-                    <div className="input-group-glow">
-                        <label htmlFor="new-password">NEW PASSWORD</label>
+
+                    <div className="form-group-glow">
+                        <label htmlFor="modal-new-password">NEW PASSWORD</label>
                         <input
-                            id="new-password"
+                            id="modal-new-password"
                             type="password"
-                            placeholder="Minimum 6 characters..."
+                            placeholder="Minimum 8 characters, with uppercase, lowercase, number & special char..."
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
                             disabled={submitting}
                             required
                         />
                     </div>
- 
-                    <div className="input-group-glow">
-                        <label htmlFor="confirm-password">CONFIRM NEW PASSWORD</label>
+
+                    <div className="form-group-glow">
+                        <label htmlFor="modal-confirm-password">CONFIRM NEW PASSWORD</label>
                         <input
-                            id="confirm-password"
+                            id="modal-confirm-password"
                             type="password"
                             placeholder="Re-enter new password..."
                             value={confirmPassword}
@@ -119,23 +139,22 @@ export const ChangePassword = () => {
                             required
                         />
                     </div>
- 
-                    <div className="actions-row">
+
+                    <div className="modal-actions">
                         <button 
                             type="button" 
-                            className="btn-cancel-logout"
-                            onClick={logout}
+                            className="btn-modal btn-modal-cancel" 
+                            onClick={onClose} 
                             disabled={submitting}
                         >
-                            Logout
+                            CANCEL
                         </button>
-                        
                         <button 
                             type="submit" 
-                            className={`btn-change-password-glow ${submitting ? 'loading' : ''}`}
+                            className="btn-modal btn-modal-submit"
                             disabled={submitting}
                         >
-                            {submitting ? <span className="spinner"></span> : 'CONFIRM PASSWORD CHANGE'}
+                            {submitting ? 'SAVING...' : 'UPDATE'}
                         </button>
                     </div>
                 </form>
