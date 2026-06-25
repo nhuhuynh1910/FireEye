@@ -1,6 +1,14 @@
 import asyncio
+import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+
+LAST_EVENT_TIMES = {
+    "FIRE": 0.0,
+    "SMOKE": 0.0,
+    "HUMAN": 0.0
+}
+COOLDOWN_SECONDS = 15.0
 
 from services.hailo_service import hailo_service
 from services.mqtt_service import mqtt_service
@@ -115,10 +123,18 @@ async def ai_detect(data: AiDetectRequest):
         human=data.human
     )
 
+    now = time.time()
+    should_save_event = False
+
+    if event_type:
+        if now - LAST_EVENT_TIMES.get(event_type, 0.0) >= COOLDOWN_SECONDS:
+            should_save_event = True
+            LAST_EVENT_TIMES[event_type] = now
+
     snapshot_path = None
     event_id = None
 
-    if event_type:
+    if event_type and should_save_event:
         snapshot_path = await asyncio.to_thread(capture_snapshot, event_type)
 
         message = f"AI phát hiện {event_type} - mức độ {risk_level}"
@@ -132,7 +148,7 @@ async def ai_detect(data: AiDetectRequest):
             snapshot_path=snapshot_path
         )
 
-    if danger:
+    if danger and should_save_event:
         mqtt_service.publish_alert({
             "source": "ai",
             "event_type": event_type,
