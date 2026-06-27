@@ -617,14 +617,17 @@ export const DashboardScreen = () => {
                                 </View>
                             </View>
 
-                            <Pressable 
-                                style={[styles.btnSprinkler, sprinklerState === "ON" && styles.btnSprinklerActive]}
-                                onPress={toggleSprinkler}
+                            <View 
+                                style={[
+                                    styles.btnSprinkler, 
+                                    sprinklerState === "ON" && styles.btnSprinklerActive,
+                                    { opacity: 0.95 }
+                                ]}
                             >
                                 <Text style={styles.btnSprinklerText}>
-                                    {sprinklerState === "ON" ? "PUMP MOTOR ACTIVE" : "PUMP SHUTOFF"}
+                                    {sprinklerState === "ON" ? "💧 PUMP MOTOR ACTIVE (SPRINKLER ON)" : "💤 PUMP MOTOR OFF (STANDBY)"}
                                 </Text>
-                            </Pressable>
+                            </View>
                         </View>
 
                         {/* Zone 2 */}
@@ -686,12 +689,11 @@ export const DashboardScreen = () => {
                                 <Text style={styles.switchLabel}>AUTO FACE RECOGNITION</Text>
                                 <Text style={styles.settingsDesc}>Scan camera frames every 3s for matching</Text>
                             </View>
-                            <Pressable 
-                                style={[styles.toggleBtn, faceWatchActive ? styles.toggleBtnOn : styles.toggleBtnOff]}
-                                onPress={toggleFaceWatch}
+                            <View 
+                                style={[styles.toggleBtn, faceWatchActive ? styles.toggleBtnOn : styles.toggleBtnOff, { opacity: 0.9 }]}
                             >
                                 <Text style={styles.toggleBtnText}>{faceWatchActive ? "RUNNING" : "STOPPED"}</Text>
-                            </Pressable>
+                            </View>
                         </View>
                         <Text style={styles.fieldLabel}>
                             Service Status: <Text style={{ color: faceWatchActive ? colors.accentGreen : colors.accentRed, fontWeight: 'bold' }}>{faceWatchActive ? 'RUNNING' : 'STOPPED'}</Text>
@@ -700,61 +702,13 @@ export const DashboardScreen = () => {
 
                     {/* Face verification HUD */}
                     <View style={styles.settingsCard}>
-                        <Text style={styles.settingsTitle}>FACE VERIFICATION HUD</Text>
+                        <Text style={styles.settingsTitle}>FACE VERIFICATION HUD (READ ONLY)</Text>
                         
-                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                            <Pressable 
-                                style={[styles.submitBtn, { flex: 1, marginTop: 0 }]}
-                                onPress={handleCameraVerify}
-                                disabled={isVerifying}
-                            >
-                                <Text style={styles.submitBtnText}>
-                                    {isVerifying ? "SCANNING LIVE FEED..." : "SCAN DAHUA CAMERA"}
-                                </Text>
-                            </Pressable>
-                        </View>
-
-                        <Text style={{ textAlign: 'center', marginVertical: 8, fontSize: 8, color: colors.textMuted, fontFamily: 'monospace' }}>
-                            OR UPLOAD SNAPSHOT
-                        </Text>
-
-                        {/* Preset options */}
-                        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
-                            <Pressable 
-                                style={[styles.adjusterBtn, regFile && regFile.name === 'employee_verified.jpg' && { borderColor: colors.accentCyan }]}
-                                onPress={() => {
-                                    const mockFile = {
-                                        uri: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=300&h=300&q=80',
-                                        name: 'employee_verified.jpg',
-                                        type: 'image/jpeg'
-                                    };
-                                    setRegFile(mockFile);
-                                    handleFileVerify(mockFile);
-                                }}
-                            >
-                                <Text style={styles.adjusterBtnText}>MOCK FACE A</Text>
-                            </Pressable>
-                            <Pressable 
-                                style={[styles.adjusterBtn, regFile && regFile.name === 'stranger_detected.jpg' && { borderColor: colors.accentCyan }]}
-                                onPress={() => {
-                                    const mockFile = {
-                                        uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&h=300&q=80',
-                                        name: 'stranger_detected.jpg',
-                                        type: 'image/jpeg'
-                                    };
-                                    setRegFile(mockFile);
-                                    handleFileVerify(mockFile);
-                                }}
-                            >
-                                <Text style={styles.adjusterBtnText}>MOCK FACE B</Text>
-                            </Pressable>
-                        </View>
-
                         {/* Verification Image Preview with Bounding Box overlays */}
-                        {verResult && (
+                        {verResult ? (
                             <View style={styles.verificationResultBox}>
                                 <Text style={styles.verificationResultTitle}>
-                                    VERIFICATION RESULTS ({verResult.faces_detected} DETECTED)
+                                    LAST DETECTED FACES ({verResult.faces_detected} DETECTED)
                                 </Text>
                                 
                                 {verResult.snapshot && (
@@ -837,91 +791,16 @@ export const DashboardScreen = () => {
                                     )}
                                 </View>
                             </View>
+                        ) : (
+                            <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                                <Text style={{ fontSize: 9, color: colors.textMuted, fontFamily: 'monospace' }}>
+                                    NO LIVE DETECTION DATA RECEIVED YET
+                                </Text>
+                            </View>
                         )}
                     </View>
 
-                    {/* Register Authorized Personnel form */}
-                    <View style={styles.settingsCard}>
-                        <Text style={styles.settingsTitle}>REGISTER AUTHORIZED PERSONNEL</Text>
-                        
-                        <Text style={styles.fieldLabel}>NAME</Text>
-                        <TextInput
-                            style={styles.textField}
-                            placeholder="Type employee/guest name..."
-                            placeholderTextColor={colors.textMuted}
-                            value={regName}
-                            onChangeText={setRegName}
-                            disabled={isRegistering}
-                        />
 
-                        <Text style={styles.fieldLabel}>ROLE</Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                            {['Operator', 'Security Officer', 'Plant Supervisor', 'Guest Visitor'].map(roleOption => (
-                                <Pressable
-                                    key={roleOption}
-                                    style={[
-                                        styles.roleSelectBtn,
-                                        regRole === roleOption && styles.roleSelectBtnActive
-                                    ]}
-                                    onPress={() => setRegRole(roleOption)}
-                                    disabled={isRegistering}
-                                >
-                                    <Text style={[
-                                        styles.roleSelectBtnText,
-                                        regRole === roleOption && styles.roleSelectBtnTextActive
-                                    ]}>
-                                        {roleOption}
-                                    </Text>
-                                </Pressable>
-                            ))}
-                        </View>
-
-                        <Text style={styles.fieldLabel}>PORTRAIT PHOTO</Text>
-                        <Pressable 
-                            style={styles.portraitPhotoSelector}
-                            onPress={() => {
-                                const mockPhoto = {
-                                    uri: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&h=150&q=80',
-                                    name: 'reg_personnel.jpg',
-                                    type: 'image/jpeg'
-                                };
-                                setRegFile(mockPhoto);
-                            }}
-                            disabled={isRegistering}
-                        >
-                            <Text style={styles.portraitSelectorIcon}>📷</Text>
-                            <Text style={styles.portraitSelectorText}>
-                                {regFile ? regFile.name : "Tap to select mock portrait photo"}
-                            </Text>
-                        </Pressable>
-
-                        {regStatus.message ? (
-                            <View style={[
-                                styles.regStatusBox,
-                                {
-                                    borderColor: regStatus.success ? colors.accentCyan : colors.accentRed,
-                                    backgroundColor: regStatus.success ? 'rgba(255, 94, 54, 0.05)' : 'rgba(255, 59, 48, 0.05)'
-                                }
-                            ]}>
-                                <Text style={[
-                                    styles.regStatusText,
-                                    { color: regStatus.success ? colors.accentCyan : colors.accentRed }
-                                ]}>
-                                    {regStatus.message}
-                                </Text>
-                            </View>
-                        ) : null}
-
-                        <Pressable
-                            style={[styles.submitBtn, { marginTop: 12 }]}
-                            onPress={handleRegisterSubmit}
-                            disabled={isRegistering}
-                        >
-                            <Text style={styles.submitBtnText}>
-                                {isRegistering ? "COMMITING..." : "COMMIT REGISTRATION"}
-                            </Text>
-                        </Pressable>
-                    </View>
 
                     {/* Registered personnel roster database */}
                     <View style={styles.settingsCard}>
