@@ -14,7 +14,6 @@ import {
     Dimensions
 } from 'react-native';
 import { useSystem } from '../store/SystemContext';
-import { PTZController } from '../components/PTZController';
 import { formatTimestamp } from '../utils/helpers';
 import { colors } from '../theme/colors';
 import { api } from '../services/api';
@@ -552,24 +551,42 @@ export const DashboardScreen = () => {
                         })}
                     </View>
 
-                    {/* PTZ CONTROLLER */}
-                    <PTZController />
-
-                    {/* CAMERA PATROL / AUTO-SCAN MODULE */}
-                    <View style={styles.patrolCard}>
-                        <Text style={styles.patrolTitle}>CAMERA PATROL NODE</Text>
-                        <View style={styles.patrolRow}>
-                            <Text style={styles.patrolDesc}>
-                                Sequential zone patrol scanning (Zones 1-4)
+                    {/* READ-ONLY MODE TELEMETRY INDICATOR */}
+                    <View style={{
+                        backgroundColor: 'rgba(255, 94, 54, 0.05)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(255, 94, 54, 0.2)',
+                        borderRadius: 6,
+                        padding: 12,
+                        marginBottom: 16,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10
+                    }}>
+                        <View style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: colors.accentCyan,
+                        }} />
+                        <View style={{ flex: 1 }}>
+                            <Text style={{
+                                fontSize: 10,
+                                fontWeight: 'bold',
+                                color: colors.textPrimary,
+                                fontFamily: 'monospace',
+                                letterSpacing: 0.5
+                            }}>
+                                READ-ONLY TELEMETRY CONSOLE
                             </Text>
-                            <Pressable 
-                                style={[styles.toggleBtn, autoScanActive ? styles.toggleBtnOn : styles.toggleBtnOff]}
-                                onPress={() => setAutoScanActive(!autoScanActive)}
-                            >
-                                <Text style={styles.toggleBtnText}>
-                                    {autoScanActive ? "ACTIVE" : "STANDBY"}
-                                </Text>
-                            </Pressable>
+                            <Text style={{
+                                fontSize: 8,
+                                color: colors.textMuted,
+                                fontFamily: 'monospace',
+                                marginTop: 2
+                            }}>
+                                Camera controls and patrols are locked on mobile to prevent rotation interference.
+                            </Text>
                         </View>
                     </View>
 
