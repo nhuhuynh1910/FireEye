@@ -1,17 +1,57 @@
 /* pages/admin/AdminSystemLogs.jsx */
-import React, { useState } from 'react';
-import { API_BASE_URL } from '../../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { api, API_BASE_URL } from '../../services/api';
 import { useSystem } from '../../store/SystemContext';
 
 export const AdminSystemLogs = () => {
     const { events, fetchEvents } = useSystem();
+    const [activeSubTab, setActiveSubTab] = useState('threats'); // 'threats' | 'audit'
+
+    // Refresh states
     const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // Audit logs states
+    const [auditLogs, setAuditLogs] = useState([]);
+    const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+
+    // Pagination states
+    const [threatPage, setThreatPage] = useState(1);
+    const [auditPage, setAuditPage] = useState(1);
+    const itemsPerPage = 10;
+
+    // Threat Modal selection
     const [selectedEvent, setSelectedEvent] = useState(null);
+
+    const fetchAudit = useCallback(async () => {
+        setIsLoadingAudit(true);
+        try {
+            const res = await api.getAuditLogs(100);
+            const logsData = Array.isArray(res) ? res : (res?.data || []);
+            setAuditLogs(logsData);
+        } catch (err) {
+            console.error("Failed to load audit logs:", err);
+        } finally {
+            setIsLoadingAudit(false);
+        }
+    }, []);
+
+    // Initial load and tab change trigger
+    useEffect(() => {
+        if (activeSubTab === 'audit') {
+            fetchAudit();
+        }
+    }, [activeSubTab, fetchAudit]);
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
         try {
-            await fetchEvents(100);
+            if (activeSubTab === 'threats') {
+                await fetchEvents(100);
+                setThreatPage(1);
+            } else {
+                await fetchAudit();
+                setAuditPage(1);
+            }
         } finally {
             setIsRefreshing(false);
         }
@@ -22,83 +62,218 @@ export const AdminSystemLogs = () => {
         return timeStr.replace('T', ' ').substring(0, 19);
     };
 
+    // Calculate pagination for threats
+    const totalThreatPages = Math.ceil(events.length / itemsPerPage);
+    const currentThreats = events.slice((threatPage - 1) * itemsPerPage, threatPage * itemsPerPage);
+
+    // Calculate pagination for audit logs
+    const totalAuditPages = Math.ceil(auditLogs.length / itemsPerPage);
+    const currentAudits = auditLogs.slice((auditPage - 1) * itemsPerPage, auditPage * itemsPerPage);
+
     return (
         <div className="admin-view-panel">
             <div className="admin-view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <div>
-                    <h2>SECURITY AUDIT SYSTEM LOGS</h2>
-                    <p>Traverse chronological hardware warnings, sprinkler events and AI detections</p>
+                    <h2>SYSTEM LOGS JOURNAL</h2>
+                    <p>Chronological alerts, AI threat logs, and administrator security audit actions</p>
                 </div>
-                <button className="btn-tech-action" onClick={handleRefresh} disabled={isRefreshing} style={{ marginTop: 0 }}>
-                    {isRefreshing ? "QUERYING SQL..." : "REFRESH LOGS"}
+                <button 
+                    className="btn-tech-action" 
+                    onClick={handleRefresh} 
+                    disabled={isRefreshing || isLoadingAudit} 
+                    style={{ marginTop: 0 }}
+                >
+                    {isRefreshing || isLoadingAudit ? "POLLING SQL..." : "REFRESH CURRENT LOGS"}
                 </button>
             </div>
 
-            <div className="admin-card-section">
-                <div className="services-status-table-wrapper">
-                    {isRefreshing && events.length === 0 ? (
-                        <div style={{ padding: '20px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                            QUERYING TELEMETRY SQL SECURE JOURNAL...
-                        </div>
-                    ) : (
-                        <table className="admin-table">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>TIMESTAMP</th>
-                                    <th>EVENT TYPE</th>
-                                    <th>SOURCE</th>
-                                    <th>RISK LEVEL</th>
-                                    <th>CONFIDENCE</th>
-                                    <th>MESSAGE</th>
-                                    <th>MEDIA FRAME</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {events.map((event) => (
-                                    <tr key={event.id} onClick={() => setSelectedEvent(event)} style={{ cursor: 'pointer' }}>
-                                        <td>#{event.id}</td>
-                                        <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>{formatTime(event.created_at)}</td>
-                                        <td>
-                                            <span className={`event-type-badge ${event.event_type?.toLowerCase() || ''}`}>
-                                                {event.event_type}
-                                            </span>
-                                        </td>
-                                        <td>{event.source}</td>
-                                        <td>
-                                            <span className={`risk-label-cell ${event.risk_level?.toLowerCase() || ''}`}>
-                                                {event.risk_level}
-                                            </span>
-                                        </td>
-                                        <td style={{ fontFamily: 'monospace' }}>
-                                            {event.confidence ? `${(event.confidence * 100).toFixed(0)}%` : 'N/A'}
-                                        </td>
-                                        <td>{event.message}</td>
-                                        <td>
-                                            {event.snapshot_path ? (
-                                                <span style={{ color: 'var(--accent-cyan)', textDecoration: 'underline', fontWeight: 'bold' }}>
-                                                    VIEW FRAME
-                                                </span>
-                                            ) : (
-                                                <span style={{ color: 'var(--text-muted)' }}>NO_MEDIA</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                                {events.length === 0 && (
-                                    <tr>
-                                        <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>
-                                            No threat events recorded in database yet.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    )}
-                </div>
+            {/* Sub-tab selection */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                <button
+                    type="button"
+                    className={`btn-tech-action ${activeSubTab === 'threats' ? 'primary' : ''}`}
+                    onClick={() => setActiveSubTab('threats')}
+                    style={{ flexGrow: 1, marginTop: 0 }}
+                >
+                    THREAT & EVENT LOGS
+                </button>
+                <button
+                    type="button"
+                    className={`btn-tech-action ${activeSubTab === 'audit' ? 'primary' : ''}`}
+                    onClick={() => setActiveSubTab('audit')}
+                    style={{ flexGrow: 1, marginTop: 0 }}
+                >
+                    SECURITY AUDIT LOGS
+                </button>
             </div>
 
-            {/* View Snapshot Modal */}
+            <div className="admin-card-section" style={{ minHeight: '400px' }}>
+                {activeSubTab === 'threats' ? (
+                    <div className="services-status-table-wrapper">
+                        {isRefreshing && events.length === 0 ? (
+                            <div style={{ padding: '20px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                                QUERYING TELEMETRY SQL SECURE JOURNAL...
+                            </div>
+                        ) : (
+                            <>
+                                <table className="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>TIMESTAMP</th>
+                                            <th>EVENT TYPE</th>
+                                            <th>SOURCE</th>
+                                            <th>RISK LEVEL</th>
+                                            <th>CONFIDENCE</th>
+                                            <th>MESSAGE</th>
+                                            <th>MEDIA FRAME</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {currentThreats.map((event) => (
+                                            <tr key={event.id} onClick={() => setSelectedEvent(event)} style={{ cursor: 'pointer' }}>
+                                                <td>#{event.id}</td>
+                                                <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>{formatTime(event.created_at)}</td>
+                                                <td>
+                                                    <span className={`event-type-badge ${event.event_type?.toLowerCase() || ''}`}>
+                                                        {event.event_type}
+                                                    </span>
+                                                </td>
+                                                <td>{event.source}</td>
+                                                <td>
+                                                    <span className={`risk-label-cell ${event.risk_level?.toLowerCase() || ''}`}>
+                                                        {event.risk_level}
+                                                    </span>
+                                                </td>
+                                                <td style={{ fontFamily: 'monospace' }}>
+                                                    {event.confidence ? `${(event.confidence * 100).toFixed(0)}%` : 'N/A'}
+                                                </td>
+                                                <td>{event.message}</td>
+                                                <td>
+                                                    {event.snapshot_path ? (
+                                                        <span style={{ color: 'var(--accent-cyan)', textDecoration: 'underline', fontWeight: 'bold' }}>
+                                                            VIEW FRAME
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-muted)' }}>NO_MEDIA</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {events.length === 0 && (
+                                            <tr>
+                                                <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>
+                                                    No threat events recorded in database yet.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+
+                                {/* Threats Pagination */}
+                                {events.length > 0 && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '16px' }}>
+                                        <button
+                                            className="btn-tech-action"
+                                            onClick={() => setThreatPage(prev => Math.max(prev - 1, 1))}
+                                            disabled={threatPage === 1}
+                                            style={{ marginTop: 0 }}
+                                        >
+                                            &larr; PREV
+                                        </button>
+                                        <span style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                            PAGE {threatPage} OF {totalThreatPages || 1}
+                                        </span>
+                                        <button
+                                            className="btn-tech-action"
+                                            onClick={() => setThreatPage(prev => Math.min(prev + 1, totalThreatPages))}
+                                            disabled={threatPage === totalThreatPages || totalThreatPages === 0}
+                                            style={{ marginTop: 0 }}
+                                        >
+                                            NEXT &rarr;
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                ) : (
+                    <div className="services-status-table-wrapper">
+                        {isLoadingAudit && auditLogs.length === 0 ? (
+                            <div style={{ padding: '20px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                                QUERYING SYSTEM SECURITY AUDIT SQL DATABASE...
+                            </div>
+                        ) : (
+                            <>
+                                <table className="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>TIMESTAMP</th>
+                                            <th>OPERATOR USER</th>
+                                            <th>ACTION PERFORMED</th>
+                                            <th>TARGET TARGET</th>
+                                            <th>TRANSACTIONS DETAILS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {currentAudits.map((log) => (
+                                            <tr key={log.id}>
+                                                <td>#{log.id}</td>
+                                                <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>{formatTime(log.created_at)}</td>
+                                                <td style={{ fontWeight: 'bold', color: 'var(--accent-cyan)' }}>
+                                                    {log.full_name || log.username || `User #${log.user_id}`}
+                                                </td>
+                                                <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>{log.action}</td>
+                                                <td>
+                                                    <span style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                                        {log.target_device || 'SYSTEM'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ fontSize: '12px' }}>{log.details}</td>
+                                            </tr>
+                                        ))}
+                                        {auditLogs.length === 0 && (
+                                            <tr>
+                                                <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>
+                                                    No audit security operations recorded in database yet.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+
+                                {/* Audit Pagination */}
+                                {auditLogs.length > 0 && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '16px' }}>
+                                        <button
+                                            className="btn-tech-action"
+                                            onClick={() => setAuditPage(prev => Math.max(prev - 1, 1))}
+                                            disabled={auditPage === 1}
+                                            style={{ marginTop: 0 }}
+                                        >
+                                            &larr; PREV
+                                        </button>
+                                        <span style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                            PAGE {auditPage} OF {totalAuditPages || 1}
+                                        </span>
+                                        <button
+                                            className="btn-tech-action"
+                                            onClick={() => setAuditPage(prev => Math.min(prev + 1, totalAuditPages))}
+                                            disabled={auditPage === totalAuditPages || totalAuditPages === 0}
+                                            style={{ marginTop: 0 }}
+                                        >
+                                            NEXT &rarr;
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* View Threat Snapshot Modal */}
             {selectedEvent && (
                 <div className="modal-overlay" onClick={() => setSelectedEvent(null)}>
                     <div

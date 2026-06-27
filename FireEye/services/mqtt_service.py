@@ -282,7 +282,7 @@ class MQTTService:
         payload = "ON" if value == 1 else "OFF"
 
         try:
-            self.client.publish(topic, payload)
+            self.client.publish(topic, payload, qos=1)
             update_sprinkler(payload)
 
             return {
@@ -344,7 +344,7 @@ class MQTTService:
 
         try:
             payload = json.dumps(data)
-            self.client.publish(topic, payload)
+            self.client.publish(topic, payload, qos=1)
             return True
 
         except Exception as e:

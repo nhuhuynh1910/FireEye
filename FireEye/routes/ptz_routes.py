@@ -10,44 +10,59 @@ class StopRequest(BaseModel):
     code: str = "left"
 
 
+def reset_mqtt_active_zone():
+    try:
+        from services.mqtt_service import mqtt_service
+        mqtt_service.reset_active_zone()
+    except Exception as e:
+        print("Lỗi reset active_zone trong ptz_route:", e)
+
+
 @router.post("/api/camera/left")
 def camera_left():
+    reset_mqtt_active_zone()
     ok = camera_service.move_left()
     return {"success": ok, "action": "left"}
 
 
 @router.post("/api/camera/right")
 def camera_right():
+    reset_mqtt_active_zone()
     ok = camera_service.move_right()
     return {"success": ok, "action": "right"}
 
 
 @router.post("/api/camera/up")
 def camera_up():
+    reset_mqtt_active_zone()
     ok = camera_service.move_up()
     return {"success": ok, "action": "up"}
 
 
 @router.post("/api/camera/down")
 def camera_down():
+    reset_mqtt_active_zone()
     ok = camera_service.move_down()
     return {"success": ok, "action": "down"}
 
 
 @router.post("/api/camera/zoom-in")
 def camera_zoom_in():
+    reset_mqtt_active_zone()
     ok = camera_service.zoom_in()
     return {"success": ok, "action": "zoom-in"}
 
 
 @router.post("/api/camera/zoom-out")
 def camera_zoom_out():
+    reset_mqtt_active_zone()
     ok = camera_service.zoom_out()
     return {"success": ok, "action": "zoom-out"}
 
 
 @router.post("/api/camera/stop")
 def camera_stop(data: StopRequest):
+    reset_mqtt_active_zone()
     ok = camera_service.stop(data.code)
     return {
         "success": ok,
@@ -58,17 +73,26 @@ def camera_stop(data: StopRequest):
 
 @router.post("/api/camera/zone/{zone_id}")
 def camera_zone(zone_id: int):
+    try:
+        from services.mqtt_service import mqtt_service
+        import time
+        mqtt_service.active_zone = zone_id
+        mqtt_service.last_zone_change_time = time.time()
+    except Exception as e:
+        print("Lỗi đồng bộ active_zone trong camera_zone:", e)
     return camera_service.goto_zone(zone_id)
 
 
 @router.post("/api/camera/home")
 def camera_home():
+    reset_mqtt_active_zone()
     return camera_service.go_home()
 
 
 @router.post("/api/camera/set-home")
 def camera_set_home():
     return camera_service.set_home()
+
 
 @router.get("/api/camera/zones")
 def get_camera_zones():

@@ -306,5 +306,25 @@ def match_face_from_dahua():
     return result
 
 
+def register_face_from_dahua(name: str, role: str):
+    snapshot_path = capture_snapshot("face_reg")
+
+    if snapshot_path is None:
+        return {
+            "success": False,
+            "message": "Không chụp được ảnh từ camera Dahua"
+        }
+
+    local_path = snapshot_path.replace("/static/", "static/")
+
+    result = register_face_from_image(
+        name=name,
+        role=role,
+        image_path=local_path
+    )
+
+    return result
+
+
 def list_people():
     return get_people()

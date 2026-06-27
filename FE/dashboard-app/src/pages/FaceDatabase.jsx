@@ -1,10 +1,11 @@
+/* pages/FaceDatabase.jsx */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, API_BASE_URL } from '../services/api';
 import { useSystem } from '../store/SystemContext';
 import { useAuth } from '../context/AuthContext';
+import { VideoFeed } from '../components/VideoFeed';
 
 export const FaceDatabase = () => {
-    const { faceWatchActive, toggleFaceWatch } = useSystem();
     const { user } = useAuth();
 
     // Registry form
@@ -13,6 +14,8 @@ export const FaceDatabase = () => {
     const [regFile, setRegFile] = useState(null);
     const [regStatus, setRegStatus] = useState({ success: null, message: "" });
     const [isRegistering, setIsRegistering] = useState(false);
+    const [showCctvFeed, setShowCctvFeed] = useState(false);
+    const [activeLeftTab, setActiveLeftTab] = useState('verify'); // 'verify' | 'register'
     
     // Verification state
     const [verResult, setVerResult] = useState(null);
@@ -44,10 +47,45 @@ export const FaceDatabase = () => {
         fetchPeople();
     }, [fetchPeople]);
 
+    const handleCameraRegisterSubmit = async (e) => {
+        if (e) e.preventDefault();
+        if (!regName) {
+            setRegStatus({ success: false, message: "Please enter a name for camera registration." });
+            return;
+        }
+        setIsRegistering(true);
+        setRegStatus({ success: null, message: "" });
+
+        try {
+            const res = await api.registerFaceFromCamera(regName, regRole);
+            if (res.success) {
+                setRegStatus({ success: true, message: "Face registered from CCTV successfully!" });
+                setRegName("");
+                setRegFile(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+                fetchPeople();
+            } else {
+                setRegStatus({ success: false, message: res.message || "Camera registration failed." });
+            }
+        } catch (err) {
+            setRegStatus({ success: false, message: "Backend connection error." });
+        } finally {
+            setIsRegistering(false);
+        }
+    };
+
     const handleRegisterSubmit = async (e) => {
         e.preventDefault();
-        if (!regName || !regFile) {
-            setRegStatus({ success: false, message: "Please enter a name and select an image." });
+        if (!regName) {
+            setRegStatus({ success: false, message: "Please enter a name." });
+            return;
+        }
+        if (!regFile) {
+            if (showCctvFeed) {
+                await handleCameraRegisterSubmit(e);
+                return;
+            }
+            setRegStatus({ success: false, message: "Please select an image file." });
             return;
         }
         setIsRegistering(true);
@@ -110,223 +148,266 @@ export const FaceDatabase = () => {
         <div className="face-db-grid">
             {/* Left Module: Verification and Registry Forms */}
             <div className="face-db-card">
-                <h3 className="face-db-title">FACE VERIFICATION HUD</h3>
-
-                {/* Real-time Watcher Service Control */}
-                <div className="face-verification-box face-watcher-box">
-                    <div className="face-watcher-header">
-                        <span className="face-watcher-title">REAL-TIME AUTO WATCHER</span>
-                        <span className={`face-watcher-status-badge ${faceWatchActive ? 'running' : 'stopped'}`}>
-                            {faceWatchActive ? 'RUNNING' : 'STOPPED'}
-                        </span>
-                    </div>
-                    <p className="face-watcher-desc">
-                        Continuous scanning of Dahua camera stream for real-time face authentication.
-                    </p>
+                {/* Tab Selection Header */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                     <button
                         type="button"
-                        className={`btn-tech-action ${faceWatchActive ? 'danger' : 'primary'}`}
-                        onClick={toggleFaceWatch}
-                        style={{ marginTop: '8px', width: '100%' }}
+                        className={`btn-tech-action ${activeLeftTab === 'verify' ? 'primary' : ''}`}
+                        onClick={() => setActiveLeftTab('verify')}
+                        style={{ flexGrow: 1, marginTop: 0 }}
                     >
-                        {faceWatchActive ? 'DEACTIVATE AUTO WATCHER' : 'ACTIVATE AUTO WATCHER'}
+                        VERIFICATION
+                    </button>
+                    <button
+                        type="button"
+                        className={`btn-tech-action ${activeLeftTab === 'register' ? 'primary' : ''}`}
+                        onClick={() => setActiveLeftTab('register')}
+                        style={{ flexGrow: 1, marginTop: 0 }}
+                    >
+                        REGISTRATION
                     </button>
                 </div>
 
-                {/* Camera Match Trigger */}
-                <div className="face-verification-box">
-                    <button
-                        className="btn-tech-action primary"
-                        onClick={handleCameraVerify}
-                        disabled={isVerifying}
-                    >
-                        {isVerifying ? "SCANNING LIVE FEED..." : "SCAN DAHUA CAMERA"}
-                    </button>
-                    
-                    <div style={{ textAlign: 'center', margin: '6px 0', fontSize: '11px', color: 'var(--text-muted)' }}>
-                        OR UPLOAD SNAPSHOT
-                    </div>
+                {activeLeftTab === 'verify' && (
+                    <>
+                        <h3 className="face-db-title">FACE VERIFICATION HUD</h3>
 
-                    <input
-                        type="file"
-                        accept="image/*"
-                        ref={verInputRef}
-                        onChange={(e) => handleFileVerify(e.target.files[0])}
-                        style={{ display: 'none' }}
-                    />
-                    
-                    <button
-                        className="btn-tech-action"
-                        onClick={() => verInputRef.current?.click()}
-                        disabled={isVerifying}
-                    >
-                        UPLOAD SCAN FILE
-                    </button>
-                </div>
-
-                {/* Match Results View */}
-                {verResult && (
-                    <div className="face-verification-box" style={{ border: '1px solid var(--accent-cyan)' }}>
-                        <h4 style={{ fontSize: '12px', color: 'var(--accent-cyan)', fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px' }}>
-                            VERIFICATION RESULTS ({verResult.faces_detected} DETECTED)
-                        </h4>
-                        
-                        {verResult.snapshot && (
-                            <div className="verification-photo-pane">
-                                <div style={{ position: 'relative', aspectRatio: '16/9', height: '100%', width: 'auto' }}>
-                                    <img src={`${API_BASE_URL}${verResult.snapshot}`} alt="Face Verification Scan" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    {isVerifying && <div className="face-scanning-line"></div>}
-                                    
-                                    {/* Overlay bounding boxes from results */}
-                                    {verResult.results.map((face, index) => {
-                                        if (!face.bbox) return null;
-                                        // Scale coordinates from raw Dahua to responsive container if needed,
-                                        // here we draw them relative if image is exact size, or draw absolute based on coords
-                                        const [x1, y1, x2, y2] = face.bbox;
-                                        return (
-                                            <div
-                                                key={index}
-                                                style={{
-                                                    position: 'absolute',
-                                                    border: `2px solid ${face.matched ? 'var(--accent-cyan)' : 'var(--accent-red)'}`,
-                                                    // Assuming simple responsive percentage layout mapping for demonstration
-                                                    left: `${x1 / 9.6}%`,
-                                                    top: `${y1 / 5.4}%`,
-                                                    width: `${(x2 - x1) / 9.6}%`,
-                                                    height: `${(y2 - y1) / 5.4}%`,
-                                                    pointerEvents: 'none'
-                                                }}
-                                            >
-                                                <span style={{
-                                                    position: 'absolute',
-                                                    top: '-18px',
-                                                    left: '-2px',
-                                                    background: face.matched ? 'var(--accent-cyan)' : 'var(--accent-red)',
-                                                    color: '#000',
-                                                    fontWeight: '800',
-                                                    fontSize: '8px',
-                                                    fontFamily: 'monospace',
-                                                    padding: '1px 4px',
-                                                    borderRadius: '2px',
-                                                    whiteSpace: 'nowrap'
-                                                }}>
-                                                    {face.name} {(face.confidence * 100).toFixed(0)}%
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {verResult.results.map((face, idx) => (
-                                <div
-                                    key={idx}
-                                    style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        fontFamily: 'monospace',
-                                        fontSize: '11px',
-                                        background: 'rgba(6,10,19,0.5)',
-                                        padding: '6px',
-                                        borderRadius: '4px',
-                                        borderLeft: `3px solid ${face.matched ? 'var(--accent-cyan)' : 'var(--accent-red)'}`
-                                    }}
-                                >
-                                    <span>{face.name} ({face.role || 'N/A'})</span>
-                                    <span style={{ color: face.matched ? 'var(--accent-cyan)' : 'var(--accent-red)' }}>
-                                        {face.matched ? 'AUTHORIZED' : 'UNKNOWN'} ({(face.confidence * 100).toFixed(0)}%)
-                                    </span>
-                                </div>
-                            ))}
-                            {verResult.results.length === 0 && (
-                                <div style={{ fontSize: '11px', color: 'var(--accent-red)', fontFamily: 'monospace' }}>
-                                    NO FACES DETECTED IN CAMERA SCOPE
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {/* Face Registration form */}
-                {user?.role === 'ADMIN' && (
-                    <form onSubmit={handleRegisterSubmit} style={{ marginTop: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-                        <h4 style={{ fontSize: '12px', color: '#ffffff', fontWeight: '700', textTransform: 'uppercase', marginBottom: '12px' }}>
-                            REGISTER AUTHORIZED PERSONNEL
-                        </h4>
-
-                        <div className="input-group">
-                            <label htmlFor="reg-name">NAME</label>
-                            <input
-                                type="text"
-                                id="reg-name"
-                                placeholder="Type employee/guest name..."
-                                value={regName}
-                                onChange={(e) => setRegName(e.target.value)}
-                                disabled={isRegistering}
-                            />
-                        </div>
-
-                        <div className="input-group">
-                            <label htmlFor="reg-role">ROLE</label>
-                            <select
-                                id="reg-role"
-                                value={regRole}
-                                onChange={(e) => setRegRole(e.target.value)}
-                                disabled={isRegistering}
+                        {/* Camera Match Trigger */}
+                        <div className="face-verification-box">
+                            <button
+                                className="btn-tech-action primary"
+                                onClick={handleCameraVerify}
+                                disabled={isVerifying}
                             >
-                                <option value="Operator">Operator</option>
-                                <option value="Security Officer">Security Officer</option>
-                                <option value="Plant Supervisor">Plant Supervisor</option>
-                                <option value="Guest Visitor">Guest Visitor</option>
-                            </select>
-                        </div>
+                                {isVerifying ? "SCANNING LIVE FEED..." : "SCAN DAHUA CAMERA"}
+                            </button>
+                            
+                            <div style={{ textAlign: 'center', margin: '6px 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                                OR UPLOAD SNAPSHOT
+                            </div>
 
-                        <div className="input-group">
-                            <label>PORTRAIT PHOTO</label>
                             <input
                                 type="file"
                                 accept="image/*"
-                                ref={fileInputRef}
-                                onChange={(e) => setRegFile(e.target.files[0])}
+                                ref={verInputRef}
+                                onChange={(e) => handleFileVerify(e.target.files[0])}
                                 style={{ display: 'none' }}
                             />
-                            <div
-                                className="file-upload-drag"
-                                onClick={() => fileInputRef.current?.click()}
+                            
+                            <button
+                                className="btn-tech-action"
+                                onClick={() => verInputRef.current?.click()}
+                                disabled={isVerifying}
                             >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-                                </svg>
-                                <span>{regFile ? regFile.name : "Select or Drop Image File"}</span>
-                            </div>
+                                UPLOAD SCAN FILE
+                            </button>
                         </div>
 
-                        {regStatus.message && (
-                            <div style={{
-                                padding: '8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                marginBottom: '10px',
-                                fontFamily: 'monospace',
-                                backgroundColor: regStatus.success ? 'rgba(255, 94, 54, 0.1)' : 'rgba(255, 59, 48, 0.1)',
-                                border: `1px solid ${regStatus.success ? 'var(--accent-cyan)' : 'var(--accent-red)'}`,
-                                color: regStatus.success ? 'var(--accent-cyan)' : 'var(--accent-red)'
-                            }}>
-                                {regStatus.message}
+                        {/* Match Results View */}
+                        {verResult && (
+                            <div className="face-verification-box" style={{ border: '1px solid var(--accent-cyan)' }}>
+                                <h4 style={{ fontSize: '12px', color: 'var(--accent-cyan)', fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                    VERIFICATION RESULTS ({verResult.faces_detected} DETECTED)
+                                </h4>
+                                
+                                {verResult.snapshot && (
+                                    <div className="verification-photo-pane">
+                                        <div style={{ position: 'relative', aspectRatio: '16/9', height: '100%', width: 'auto' }}>
+                                            <img src={`${API_BASE_URL}${verResult.snapshot}`} alt="Face Verification Scan" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            {isVerifying && <div className="face-scanning-line"></div>}
+                                            
+                                            {/* Overlay bounding boxes from results */}
+                                            {verResult.results.map((face, index) => {
+                                                if (!face.bbox) return null;
+                                                const [x1, y1, x2, y2] = face.bbox;
+                                                return (
+                                                    <div
+                                                        key={index}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            border: `2px solid ${face.matched ? 'var(--accent-cyan)' : 'var(--accent-red)'}`,
+                                                            left: `${x1 / 9.6}%`,
+                                                            top: `${y1 / 5.4}%`,
+                                                            width: `${(x2 - x1) / 9.6}%`,
+                                                            height: `${(y2 - y1) / 5.4}%`,
+                                                            pointerEvents: 'none'
+                                                        }}
+                                                    >
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            top: '-18px',
+                                                            left: '-2px',
+                                                            background: face.matched ? 'var(--accent-cyan)' : 'var(--accent-red)',
+                                                            color: '#000',
+                                                            fontWeight: '800',
+                                                            fontSize: '8px',
+                                                            fontFamily: 'monospace',
+                                                            padding: '1px 4px',
+                                                            borderRadius: '2px',
+                                                            whiteSpace: 'nowrap'
+                                                        }}>
+                                                            {face.name} {(face.confidence * 100).toFixed(0)}%
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    {verResult.results.map((face, idx) => (
+                                        <div
+                                            key={idx}
+                                            style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                fontFamily: 'monospace',
+                                                fontSize: '11px',
+                                                background: 'rgba(6,10,19,0.5)',
+                                                padding: '6px',
+                                                borderRadius: '4px',
+                                                borderLeft: `3px solid ${face.matched ? 'var(--accent-cyan)' : 'var(--accent-red)'}`
+                                            }}
+                                        >
+                                            <span>{face.name} ({face.role || 'N/A'})</span>
+                                            <span style={{ color: face.matched ? 'var(--accent-cyan)' : 'var(--accent-red)' }}>
+                                                {face.matched ? 'AUTHORIZED' : 'UNKNOWN'} ({(face.confidence * 100).toFixed(0)}%)
+                                            </span>
+                                        </div>
+                                    ))}
+                                    {verResult.results.length === 0 && (
+                                        <div style={{ fontSize: '11px', color: 'var(--accent-red)', fontFamily: 'monospace' }}>
+                                            NO FACES DETECTED IN CAMERA SCOPE
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
+                    </>
+                )}
 
-                        <button
-                            type="submit"
-                            className="btn-tech-action primary"
-                            disabled={isRegistering}
-                            style={{ width: '100%' }}
-                        >
-                            {isRegistering ? "SAVING RECORD..." : "COMMIT REGISTRATION"}
-                        </button>
-                    </form>
+                {activeLeftTab === 'register' && (
+                    user?.role === 'ADMIN' || user?.role === 'OWNER' ? (
+                        <form onSubmit={handleRegisterSubmit} style={{ marginTop: '10px' }}>
+                            <h4 style={{ fontSize: '12px', color: '#ffffff', fontWeight: '700', textTransform: 'uppercase', marginBottom: '12px' }}>
+                                REGISTER AUTHORIZED PERSONNEL
+                            </h4>
+
+                            <div className="input-group">
+                                <label htmlFor="reg-name">NAME</label>
+                                <input
+                                    type="text"
+                                    id="reg-name"
+                                    placeholder="Type employee/guest name..."
+                                    value={regName}
+                                    onChange={(e) => setRegName(e.target.value)}
+                                    disabled={isRegistering}
+                                />
+                            </div>
+
+                            <div className="input-group">
+                                <label htmlFor="reg-role">ROLE</label>
+                                <select
+                                    id="reg-role"
+                                    value={regRole}
+                                    onChange={(e) => setRegRole(e.target.value)}
+                                    disabled={isRegistering}
+                                >
+                                    <option value="Operator">Operator</option>
+                                    <option value="Security Officer">Security Officer</option>
+                                    <option value="Plant Supervisor">Plant Supervisor</option>
+                                    <option value="Guest Visitor">Guest Visitor</option>
+                                </select>
+                            </div>
+
+                            <div className="input-group">
+                                <label>PORTRAIT PHOTO</label>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    ref={fileInputRef}
+                                    onChange={(e) => setRegFile(e.target.files[0])}
+                                    style={{ display: 'none' }}
+                                />
+                                <div
+                                    className="file-upload-drag"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    style={{ opacity: showCctvFeed ? 0.4 : 1, pointerEvents: showCctvFeed ? 'none' : 'auto' }}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                                    </svg>
+                                    <span>{regFile ? regFile.name : (showCctvFeed ? "CCTV Camera Active" : "Select or Drop Image File")}</span>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                                <button
+                                    type="button"
+                                    className={`btn-tech-action ${showCctvFeed ? 'danger' : 'primary'}`}
+                                    onClick={() => {
+                                        setShowCctvFeed(!showCctvFeed);
+                                        setRegFile(null);
+                                        if (fileInputRef.current) fileInputRef.current.value = "";
+                                    }}
+                                    style={{ flexGrow: 1, marginTop: 0 }}
+                                >
+                                    {showCctvFeed ? "CLOSE CCTV PREVIEW" : "OPEN CCTV PREVIEW"}
+                                </button>
+                                {showCctvFeed && (
+                                    <button
+                                        type="button"
+                                        className="btn-tech-action"
+                                        onClick={handleCameraRegisterSubmit}
+                                        disabled={isRegistering || !regName}
+                                        style={{ flexGrow: 1, marginTop: 0, borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
+                                    >
+                                        CAPTURE & REGISTER
+                                    </button>
+                                )}
+                            </div>
+
+                            {showCctvFeed && (
+                                <div className="face-verification-box" style={{ padding: '8px', marginBottom: '16px', border: '1px solid var(--accent-cyan)' }}>
+                                    <h5 style={{ fontSize: '10px', color: 'var(--accent-cyan)', marginBottom: '8px', fontFamily: 'monospace' }}>
+                                         LIVE CAMERA FEED (ALIGN YOUR FACE HERE)
+                                    </h5>
+                                    <div style={{ width: '100%', borderRadius: '4px', overflow: 'hidden' }}>
+                                        <VideoFeed />
+                                    </div>
+                                </div>
+                            )}
+
+                            {regStatus.message && (
+                                <div style={{
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    marginBottom: '10px',
+                                    fontFamily: 'monospace',
+                                    backgroundColor: regStatus.success ? 'rgba(255, 94, 54, 0.1)' : 'rgba(255, 59, 48, 0.1)',
+                                    border: `1px solid ${regStatus.success ? 'var(--accent-cyan)' : 'var(--accent-red)'}`,
+                                    color: regStatus.success ? 'var(--accent-cyan)' : 'var(--accent-red)'
+                                }}>
+                                    {regStatus.message}
+                                </div>
+                            )}
+
+                            <button
+                                type="submit"
+                                className="btn-tech-action primary"
+                                disabled={isRegistering}
+                                style={{ width: '100%' }}
+                            >
+                                {isRegistering ? "SAVING RECORD..." : (showCctvFeed ? "CAPTURE & REGISTER" : "COMMIT REGISTRATION")}
+                            </button>
+                        </form>
+                    ) : (
+                        <div style={{ padding: '30px 10px', textAlign: 'center', fontFamily: 'monospace', color: 'var(--accent-red)' }}>
+                            PERMISSION DENIED: ONLY ADMIN OR OWNER ACCESS GRANTED
+                        </div>
+                    )
                 )}
             </div>
 

@@ -3531,3 +3531,131 @@ input:checked + .switch-slider:before {
     color: #ffffff;
     box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
 }
+
+/* ==========================================================================
+   MOBILE RESPONSIVE OVERRIDES (Fits business requirements of a mobile app)
+   ========================================================================== */
+@media (max-width: 768px) {
+    /* Main Layout */
+    .app-container {
+        overflow-y: auto !important;
+        height: auto !important;
+        min-height: 100vh !important;
+    }
+    
+    .top-navbar {
+        height: auto !important;
+        min-height: 60px !important;
+        padding: 12px 16px !important;
+        flex-direction: column !important;
+        gap: 12px !important;
+        align-items: stretch !important;
+    }
+    
+    .brand-section {
+        justify-content: center !important;
+    }
+    
+    .nav-tabs {
+        justify-content: center !important;
+        width: 100% !important;
+        gap: 4px !important;
+        flex-wrap: wrap !important;
+    }
+    
+    .nav-tab-btn {
+        padding: 6px 12px !important;
+        font-size: 11px !important;
+        flex: 1 !important;
+        justify-content: center !important;
+    }
+    
+    .navbar-controls {
+        flex-direction: column !important;
+        width: 100% !important;
+        gap: 10px !important;
+        align-items: stretch !important;
+    }
+    
+    .navbar-user-info {
+        justify-content: center !important;
+    }
+    
+    .btn-emergency-stop {
+        width: 100% !important;
+        text-align: center !important;
+        padding: 12px !important;
+    }
+    
+    /* Split container -> stacked */
+    .main-split-container {
+        flex-direction: column !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
+    
+    .left-viewport {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: none !important;
+        height: auto !important;
+        overflow-y: visible !important;
+        padding: 12px !important;
+        border-right: none !important;
+    }
+    
+    .right-sidebar {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: none !important;
+        height: auto !important;
+        overflow: visible !important;
+        border-left: none !important;
+        box-shadow: none !important;
+        border-top: 1px solid rgba(255, 94, 54, 0.15) !important;
+        padding: 12px 0 !important;
+    }
+    
+    /* Layout components on admin config pages */
+    .admin-split-layout {
+        flex-direction: column !important;
+    }
+    
+    .admin-col-left, .admin-col-right {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: none !important;
+    }
+    
+    /* Video Workspace ratio */
+    .video-workspace-card {
+        aspect-ratio: 16/9 !important;
+        height: auto !important;
+        min-height: 200px !important;
+    }
+    
+    /* Grids & Cards */
+    .sensor-telemetry-grid {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+    
+    .zone-selection-grid {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 8px !important;
+    }
+    
+    .face-db-grid {
+        grid-template-columns: 1fr !important;
+        gap: 16px !important;
+        height: auto !important;
+    }
+    
+    .logs-table-wrapper {
+        overflow-x: auto !important;
+    }
+    
+    .logs-data-table {
+        min-width: 600px !important;
+    }
+}

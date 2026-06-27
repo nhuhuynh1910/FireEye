@@ -106,125 +106,129 @@ export const AdminCameraConfig = () => {
 
             <div className="admin-grid-layout" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', marginTop: '16px' }}>
                 
-                {/* Left Side: Live Feed & PTZ Joystick */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {/* Live Viewport */}
-                    <div className="admin-config-card" style={{ padding: '12px' }}>
-                        <h3 className="section-title" style={{ marginBottom: '10px' }}>CAMERA LIVE VIEW</h3>
-                        <VideoFeed />
-                    </div>
-
-                    {/* PTZ Joystick and Auto Scan */}
-                    <div className="admin-config-card">
-                        <h3 className="section-title">HARDWARE PTZ JOYSTICK</h3>
-                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                        Manual overrides are disabled during active patrol auto-scanning.
-                    </p>
-
-                    {/* AutoScan Status Toggle */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-deep)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '24px' }}>
-                        <div>
-                            <span style={{ fontWeight: 'bold', fontSize: '12px' }}>PATROL AUTO-SCANNING patrol</span>
-                            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Rotate camera through Zones 1-4 every 15 seconds</div>
+                {/* Left Side: Unified Camera Control Station */}
+                <div className="admin-config-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <h3 className="section-title">CAMERA TELEMETRY CONTROL STATION</h3>
+                    
+                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                        {/* Video Feed & Auto Patrol */}
+                        <div style={{ flex: '1.5 1 320px', minWidth: '320px' }}>
+                            <div style={{ borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                                <VideoFeed />
+                            </div>
+                            
+                            {/* AutoScan Status Toggle */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-deep)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', marginTop: '12px' }}>
+                                <div>
+                                    <span style={{ fontWeight: 'bold', fontSize: '11px' }}>PATROL AUTO-SCANNING</span>
+                                    <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Rotate camera through Zones 1-4 every 15s</div>
+                                </div>
+                                <label className="switch-container">
+                                    <input
+                                        type="checkbox"
+                                        checked={autoScanActive}
+                                        onChange={(e) => setAutoScanActive(e.target.checked)}
+                                    />
+                                    <span className="switch-slider"></span>
+                                </label>
+                            </div>
                         </div>
-                        <label className="switch-container">
-                            <input
-                                type="checkbox"
-                                checked={autoScanActive}
-                                onChange={(e) => setAutoScanActive(e.target.checked)}
-                            />
-                            <span className="switch-slider"></span>
-                        </label>
+
+                        {/* Joystick & Presets */}
+                        <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--accent-cyan)', marginBottom: '8px', letterSpacing: '0.5px' }}>
+                                MANUAL PTZ OVERRIDE
+                            </span>
+                            
+                            {/* PTZ Joystick */}
+                            <div className="ptz-joystick-grid" style={{ pointerEvents: autoScanActive ? 'none' : 'auto', opacity: autoScanActive ? 0.35 : 1 }}>
+                                {/* Up */}
+                                <button
+                                    className="ptz-hex-btn up"
+                                    title="Pan Up"
+                                    onMouseDown={() => handlePTZStart('up')}
+                                    onMouseUp={() => handlePTZStop('up')}
+                                    onMouseLeave={() => handlePTZStop('up')}
+                                >
+                                    ▲
+                                </button>
+
+                                {/* Left */}
+                                <button
+                                    className="ptz-hex-btn left"
+                                    title="Pan Left"
+                                    onMouseDown={() => handlePTZStart('left')}
+                                    onMouseUp={() => handlePTZStop('left')}
+                                    onMouseLeave={() => handlePTZStop('left')}
+                                >
+                                    ◀
+                                </button>
+
+                                {/* Center Stop */}
+                                <button
+                                    className="ptz-hex-btn center-stop"
+                                    title="STOP MOVEMENT"
+                                    onClick={handleHardStop}
+                                >
+                                    ■
+                                </button>
+
+                                {/* Right */}
+                                <button
+                                    className="ptz-hex-btn right"
+                                    title="Pan Right"
+                                    onMouseDown={() => handlePTZStart('right')}
+                                    onMouseUp={() => handlePTZStop('right')}
+                                    onMouseLeave={() => handlePTZStop('right')}
+                                >
+                                    ▶
+                                </button>
+
+                                {/* Down */}
+                                <button
+                                    className="ptz-hex-btn down"
+                                    title="Pan Down"
+                                    onMouseDown={() => handlePTZStart('down')}
+                                    onMouseUp={() => handlePTZStop('down')}
+                                    onMouseLeave={() => handlePTZStop('down')}
+                                >
+                                    ▼
+                                </button>
+
+                                {/* Zoom In */}
+                                <button
+                                    className="ptz-hex-btn zoom-in"
+                                    title="Zoom In"
+                                    onMouseDown={() => handlePTZStart('zoom-in')}
+                                    onMouseUp={() => handlePTZStop('zoom-in')}
+                                    onMouseLeave={() => handlePTZStop('zoom-in')}
+                                >
+                                    +
+                                </button>
+
+                                {/* Zoom Out */}
+                                <button
+                                    className="ptz-hex-btn zoom-out"
+                                    title="Zoom Out"
+                                    onMouseDown={() => handlePTZStart('zoom-out')}
+                                    onMouseUp={() => handlePTZStop('zoom-out')}
+                                    onMouseLeave={() => handlePTZStop('zoom-out')}
+                                >
+                                    -
+                                </button>
+                            </div>
+
+                            {/* Presets setup */}
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '12px', width: '100%' }}>
+                                <button className="btn-tech-action" onClick={handleGoHome} disabled={autoScanActive} style={{ flexGrow: 1, padding: '6px 2px', fontSize: '9px', marginTop: 0 }}>
+                                    GO HOME
+                                </button>
+                                <button className="btn-tech-action" onClick={handleSetHome} disabled={autoScanActive} style={{ flexGrow: 1, padding: '6px 2px', fontSize: '9px', marginTop: 0, borderColor: '#f59e0b', color: '#f59e0b' }}>
+                                    SET HOME
+                                </button>
+                            </div>
+                        </div>
                     </div>
-
-                    {/* PTZ Joystick */}
-                    <div className="ptz-joystick-grid" style={{ pointerEvents: autoScanActive ? 'none' : 'auto', opacity: autoScanActive ? 0.35 : 1 }}>
-                        {/* Up */}
-                        <button
-                            className="ptz-hex-btn up"
-                            title="Pan Up"
-                            onMouseDown={() => handlePTZStart('up')}
-                            onMouseUp={() => handlePTZStop('up')}
-                            onMouseLeave={() => handlePTZStop('up')}
-                        >
-                            ▲
-                        </button>
-
-                        {/* Left */}
-                        <button
-                            className="ptz-hex-btn left"
-                            title="Pan Left"
-                            onMouseDown={() => handlePTZStart('left')}
-                            onMouseUp={() => handlePTZStop('left')}
-                            onMouseLeave={() => handlePTZStop('left')}
-                        >
-                            ◀
-                        </button>
-
-                        {/* Center Stop */}
-                        <button
-                            className="ptz-hex-btn center-stop"
-                            title="STOP MOVEMENT"
-                            onClick={handleHardStop}
-                        >
-                            ■
-                        </button>
-
-                        {/* Right */}
-                        <button
-                            className="ptz-hex-btn right"
-                            title="Pan Right"
-                            onMouseDown={() => handlePTZStart('right')}
-                            onMouseUp={() => handlePTZStop('right')}
-                            onMouseLeave={() => handlePTZStop('right')}
-                        >
-                            ▶
-                        </button>
-
-                        {/* Down */}
-                        <button
-                            className="ptz-hex-btn down"
-                            title="Pan Down"
-                            onMouseDown={() => handlePTZStart('down')}
-                            onMouseUp={() => handlePTZStop('down')}
-                            onMouseLeave={() => handlePTZStop('down')}
-                        >
-                            ▼
-                        </button>
-
-                        {/* Zoom In */}
-                        <button
-                            className="ptz-hex-btn zoom-in"
-                            title="Zoom In"
-                            onMouseDown={() => handlePTZStart('zoom-in')}
-                            onMouseUp={() => handlePTZStop('zoom-in')}
-                            onMouseLeave={() => handlePTZStop('zoom-in')}
-                        >
-                            +
-                        </button>
-
-                        {/* Zoom Out */}
-                        <button
-                            className="ptz-hex-btn zoom-out"
-                            title="Zoom Out"
-                            onMouseDown={() => handlePTZStart('zoom-out')}
-                            onMouseUp={() => handlePTZStop('zoom-out')}
-                            onMouseLeave={() => handlePTZStop('zoom-out')}
-                        >
-                            -
-                        </button>
-                    </div>
-
-                    {/* Presets setup */}
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '24px' }}>
-                        <button className="btn-tech-action" onClick={handleGoHome} disabled={autoScanActive}>
-                            GO HOME (PRESET 5)
-                        </button>
-                        <button className="btn-tech-action" onClick={handleSetHome} disabled={autoScanActive} style={{ borderColor: '#f59e0b', color: '#f59e0b' }}>
-                            SAVE CURRENT AS HOME
-                        </button>
-                    </div>
-                </div>
                 </div>
 
                 {/* Right Side: Zones and Sprinklers manual override */}

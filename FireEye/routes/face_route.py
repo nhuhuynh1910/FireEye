@@ -4,6 +4,7 @@ import shutil
 
 from services.face_service import (
     register_face_from_image,
+    register_face_from_dahua,
     match_face_from_image,
     match_face_from_dahua,
     list_people
@@ -42,6 +43,18 @@ def register_face(
         image_path=str(file_path)
     )
 
+    return result
+
+
+@router.post("/register-camera")
+def register_camera_face(
+    name: str = Form(...),
+    role: str = Form("User")
+):
+    result = register_face_from_dahua(
+        name=name,
+        role=role
+    )
     return result
 
 

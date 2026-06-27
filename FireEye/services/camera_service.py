@@ -209,9 +209,6 @@ class CameraService:
         return self._send_ptz_command("stop", ptz_code, 0)
 
     def goto_preset(self, preset_id):
-        # Dừng mọi chuyển động đang diễn ra (nếu có) trước khi chuyển sang Preset mới
-        self._send_ptz_command("stop", "Left", 0)
-        time.sleep(0.05) # Độ trễ ngắn để camera xử lý lệnh dừng trước
         # API PTZ Dahua: action=start&code=GotoPreset&arg1=0&arg2=preset_id&arg3=0
         return self._send_ptz_command("start", "GotoPreset", preset_id)
 
@@ -326,6 +323,11 @@ class CameraService:
         if zone_info and "preset" in zone_info:
             preset_id = zone_info["preset"]
             ok = self.goto_preset(preset_id)
+            if not ok:
+                # Nếu lệnh di chuyển bằng preset thất bại (ví dụ do camera bận), chờ 0.2s rồi thử lại
+                time.sleep(0.2)
+                ok = self.goto_preset(preset_id)
+            
             if ok:
                 return {
                     "success": True,
@@ -333,8 +335,14 @@ class CameraService:
                     "preset_id": preset_id,
                     "mode": "preset"
                 }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Lỗi di chuyển camera tới preset {preset_id} của zone {zone_id}",
+                    "zone_id": zone_id
+                }
 
-        # Fallback về timed movement nếu không cấu hình preset hoặc gọi lỗi
+        # Fallback về timed movement chỉ khi không có cấu hình preset cho zone
         print(f"Bỏ qua Preset của zone {zone_id}, rơi về timed movement.")
         zone_moves = {
             1: [

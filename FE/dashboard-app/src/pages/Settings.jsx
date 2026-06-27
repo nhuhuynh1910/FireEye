@@ -23,21 +23,39 @@ export const Settings = () => {
     const [sensorNode, setSensorNode] = useState("Node-01");
     const [isUpdatingSensors, setIsUpdatingSensors] = useState(false);
 
-    // AI simulation states
-    const [aiFire, setAiFire] = useState(false);
-    const [aiSmoke, setAiSmoke] = useState(false);
-    const [aiHuman, setAiHuman] = useState(false);
-    const [aiConfidence, setAiConfidence] = useState(0.85);
     const [isTriggeringAI, setIsTriggeringAI] = useState(false);
 
-    // Bounding Box adjuster states
-    const [bboxX, setBboxX] = useState(408);
-    const [bboxY, setBboxY] = useState(218);
-    const [bboxW, setBboxW] = useState(180);
-    const [bboxH, setBboxH] = useState(170);
-
+    // Configured states mapped per Zone (1 to 5)
+    const [zoneConfigs, setZoneConfigs] = useState({
+        1: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 220, bboxY: 180, bboxW: 280, bboxH: 220 },
+        2: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 408, bboxY: 218, bboxW: 180, bboxH: 170 },
+        3: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 420, bboxY: 80, bboxW: 350, bboxH: 190 },
+        4: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 620, bboxY: 280, bboxW: 110, bboxH: 210 },
+        5: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 408, bboxY: 218, bboxW: 180, bboxH: 170 }
+    });
     // Simulation target physical zone
     const [targetZoneId, setTargetZoneId] = useState(1);
+
+    // Helper to get active properties
+    const activeConf = zoneConfigs[targetZoneId] || { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 408, bboxY: 218, bboxW: 180, bboxH: 170 };
+    const aiFire = activeConf.fire;
+    const aiSmoke = activeConf.smoke;
+    const aiHuman = activeConf.human;
+    const aiConfidence = activeConf.confidence;
+    const bboxX = activeConf.bboxX;
+    const bboxY = activeConf.bboxY;
+    const bboxW = activeConf.bboxW;
+    const bboxH = activeConf.bboxH;
+
+    const updateActiveConfig = (field, value) => {
+        setZoneConfigs(prev => ({
+            ...prev,
+            [targetZoneId]: {
+                ...prev[targetZoneId],
+                [field]: value
+            }
+        }));
+    };
 
     // Interactive canvas drawing states
     const [isDrawing, setIsDrawing] = useState(false);
@@ -53,10 +71,16 @@ export const Settings = () => {
         const yVal = Math.round((clientY / rect.height) * 540);
 
         setDrawStart({ x: xVal, y: yVal });
-        setBboxX(xVal);
-        setBboxY(yVal);
-        setBboxW(10);
-        setBboxH(10);
+        setZoneConfigs(prev => ({
+            ...prev,
+            [targetZoneId]: {
+                ...prev[targetZoneId],
+                bboxX: xVal,
+                bboxY: yVal,
+                bboxW: 10,
+                bboxH: 10
+            }
+        }));
         setIsDrawing(true);
     };
 
@@ -75,10 +99,16 @@ export const Settings = () => {
         const width = Math.min(960 - xMin, Math.abs(xVal - drawStart.x));
         const height = Math.min(540 - yMin, Math.abs(yVal - drawStart.y));
 
-        setBboxX(xMin);
-        setBboxY(yMin);
-        setBboxW(Math.max(10, width));
-        setBboxH(Math.max(10, height));
+        setZoneConfigs(prev => ({
+            ...prev,
+            [targetZoneId]: {
+                ...prev[targetZoneId],
+                bboxX: xMin,
+                bboxY: yMin,
+                bboxW: Math.max(10, width),
+                bboxH: Math.max(10, height)
+            }
+        }));
     };
 
     const handleCanvasMouseUp = () => {
@@ -86,43 +116,29 @@ export const Settings = () => {
     };
 
     const applyScenario = (type) => {
+        let zone = 1;
+        let config = { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 408, bboxY: 218, bboxW: 180, bboxH: 170 };
         switch (type) {
             case 'fire':
-                setAiFire(true);
-                setAiSmoke(true);
-                setAiHuman(false);
-                setAiConfidence(0.95);
-                setBboxX(220);
-                setBboxY(180);
-                setBboxW(280);
-                setBboxH(220);
-                setTargetZoneId(1); // Warehouse North
+                zone = 1;
+                config = { fire: true, smoke: true, human: false, confidence: 0.95, bboxX: 220, bboxY: 180, bboxW: 280, bboxH: 220 };
                 break;
             case 'smoke':
-                setAiFire(false);
-                setAiSmoke(true);
-                setAiHuman(false);
-                setAiConfidence(0.82);
-                setBboxX(420);
-                setBboxY(80);
-                setBboxW(350);
-                setBboxH(190);
-                setTargetZoneId(3); // Server Room
+                zone = 3;
+                config = { fire: false, smoke: true, human: false, confidence: 0.82, bboxX: 420, bboxY: 80, bboxW: 350, bboxH: 190 };
                 break;
             case 'human':
-                setAiFire(false);
-                setAiSmoke(false);
-                setAiHuman(true);
-                setAiConfidence(0.89);
-                setBboxX(620);
-                setBboxY(280);
-                setBboxW(110);
-                setBboxH(210);
-                setTargetZoneId(4); // Office Suite
+                zone = 4;
+                config = { fire: false, smoke: false, human: true, confidence: 0.89, bboxX: 620, bboxY: 280, bboxW: 110, bboxH: 210 };
                 break;
             default:
                 break;
         }
+        setTargetZoneId(zone);
+        setZoneConfigs(prev => ({
+            ...prev,
+            [zone]: config
+        }));
     };
 
     const handleUpdateSensors = async (e) => {
@@ -153,8 +169,13 @@ export const Settings = () => {
             // Auto-align camera to target zone before triggering
             if (isCameraOnline && isBackendConnected && targetZoneId) {
                 setAutoScanActive(false); // Stop auto-scanning
-                setActiveZoneId(targetZoneId); // Select current active zone focus
-                await api.moveToZone(targetZoneId);
+                if (targetZoneId === 5) {
+                    setActiveZoneId(null); // Home has no active zone focus ID
+                    await api.goHome();
+                } else {
+                    setActiveZoneId(targetZoneId); // Select current active zone focus
+                    await api.moveToZone(targetZoneId);
+                }
                 // Delay 1.5s to let PTZ camera finish mechanical rotation
                 await new Promise(resolve => setTimeout(resolve, 1500));
             }
@@ -167,7 +188,8 @@ export const Settings = () => {
                 confidence: parseFloat(aiConfidence),
                 bbox: hasDetect ? [bboxX, bboxY, bboxX + bboxW, bboxY + bboxH] : null
             });
-            alert(`AI Analysis trigger: ${res.risk_level} state registered in Zone 0${targetZoneId}.`);
+            const zoneName = targetZoneId === 5 ? "Preset 05 (Default Home)" : `Zone 0${targetZoneId}`;
+            alert(`AI Analysis trigger: ${res.risk_level} state registered in ${zoneName}.`);
             fetchEvents();
         } catch (err) {
             console.error("Failed to trigger AI alert:", err);
@@ -200,14 +222,13 @@ export const Settings = () => {
             setFlameValue(5);
             setSmokeDetected(false);
             setFlameDetected(false);
-            setAiFire(false);
-            setAiSmoke(false);
-            setAiHuman(false);
-            setAiConfidence(0.0);
-            setBboxX(408);
-            setBboxY(218);
-            setBboxW(180);
-            setBboxH(170);
+            setZoneConfigs({
+                1: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 220, bboxY: 180, bboxW: 280, bboxH: 220 },
+                2: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 408, bboxY: 218, bboxW: 180, bboxH: 170 },
+                3: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 420, bboxY: 80, bboxW: 350, bboxH: 190 },
+                4: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 620, bboxY: 280, bboxW: 110, bboxH: 210 },
+                5: { fire: false, smoke: false, human: false, confidence: 0.85, bboxX: 408, bboxY: 218, bboxW: 180, bboxH: 170 }
+            });
             alert("All simulated inputs set back to SAFE states.");
             fetchEvents();
         } catch (err) {
@@ -311,14 +332,40 @@ export const Settings = () => {
                 <div style={{ marginBottom: '16px' }}>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>SCENARIO SIMULATION PRESETS</span>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button type="button" className="btn-tech-action" style={{ fontSize: '10px', padding: '6px 10px', flex: 1, marginTop: 0 }} onClick={() => applyScenario('fire')}>
-                            🔥 Fire Preset
+                        <button 
+                            type="button" 
+                            className="btn-tech-action" 
+                            style={{ fontSize: '10px', padding: '6px 8px', flex: 1, marginTop: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} 
+                            onClick={() => applyScenario('fire')}
+                        >
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+                            </svg>
+                            Fire Preset
                         </button>
-                        <button type="button" className="btn-tech-action" style={{ fontSize: '10px', padding: '6px 10px', flex: 1, marginTop: 0 }} onClick={() => applyScenario('smoke')}>
-                            💨 Smoke Preset
+                        <button 
+                            type="button" 
+                            className="btn-tech-action" 
+                            style={{ fontSize: '10px', padding: '6px 8px', flex: 1, marginTop: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} 
+                            onClick={() => applyScenario('smoke')}
+                        >
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-3-5.5-3-5.5s-3 2.71-3 5.5a3.5 3.5 0 0 0 3.5 3.5z"/>
+                                <path d="M6.5 19A3.5 3.5 0 0 0 10 15.5c0-2.79-3-5.5-3-5.5s-3 2.71-3 5.5a3.5 3.5 0 0 0 3.5 3.5z"/>
+                            </svg>
+                            Smoke Preset
                         </button>
-                        <button type="button" className="btn-tech-action" style={{ fontSize: '10px', padding: '6px 10px', flex: 1, marginTop: 0 }} onClick={() => applyScenario('human')}>
-                            👤 Human Preset
+                        <button 
+                            type="button" 
+                            className="btn-tech-action" 
+                            style={{ fontSize: '10px', padding: '6px 8px', flex: 1, marginTop: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} 
+                            onClick={() => applyScenario('human')}
+                        >
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                            Human Preset
                         </button>
                     </div>
                 </div>
@@ -333,7 +380,7 @@ export const Settings = () => {
                             <input
                                 type="checkbox"
                                 checked={aiFire}
-                                onChange={(e) => setAiFire(e.target.checked)}
+                                onChange={(e) => updateActiveConfig('fire', e.target.checked)}
                             />
                             <span className="switch-slider"></span>
                         </label>
@@ -348,7 +395,7 @@ export const Settings = () => {
                             <input
                                 type="checkbox"
                                 checked={aiSmoke}
-                                onChange={(e) => setAiSmoke(e.target.checked)}
+                                onChange={(e) => updateActiveConfig('smoke', e.target.checked)}
                             />
                             <span className="switch-slider"></span>
                         </label>
@@ -363,7 +410,7 @@ export const Settings = () => {
                             <input
                                 type="checkbox"
                                 checked={aiHuman}
-                                onChange={(e) => setAiHuman(e.target.checked)}
+                                onChange={(e) => updateActiveConfig('human', e.target.checked)}
                             />
                             <span className="switch-slider"></span>
                         </label>
@@ -379,7 +426,7 @@ export const Settings = () => {
                             min="0"
                             max="100"
                             value={aiConfidence * 100}
-                            onChange={(e) => setAiConfidence(parseFloat(e.target.value) / 100)}
+                            onChange={(e) => updateActiveConfig('confidence', parseFloat(e.target.value) / 100)}
                         />
                     </div>
 
@@ -395,6 +442,7 @@ export const Settings = () => {
                             <option value={2}>Zone 02: Loading Dock</option>
                             <option value={3}>Zone 03: Server Room</option>
                             <option value={4}>Zone 04: Office Suite</option>
+                            <option value={5}>Preset 05: Default Home</option>
                         </select>
                         <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
                             Triggering the alarm will automatically move the PTZ camera to this zone first.

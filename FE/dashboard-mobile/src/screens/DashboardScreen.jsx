@@ -67,6 +67,11 @@ export const DashboardScreen = () => {
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [eventLogs, setEventLogs] = useState([]);
     const [isRefreshingEvents, setIsRefreshingEvents] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+
+    const itemsPerPage = 10;
+    const totalPages = Math.ceil(eventLogs.length / itemsPerPage);
+    const paginatedEvents = eventLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     // Rotation state
     const [rotation, setRotation] = useState(0);
@@ -143,6 +148,7 @@ export const DashboardScreen = () => {
             const res = await api.getEvents(50);
             if (res.status === "success") {
                 setEventLogs(res.data);
+                setCurrentPage(1);
             }
         } catch (err) {
             console.error("Failed to load events in mobile:", err);
@@ -251,7 +257,7 @@ export const DashboardScreen = () => {
     const showLive = isBackendConnected && isCameraOnline && activeCameraId === 1;
     const isAlerting = overallAlertLevel !== "safe" || aiFireDetected || aiSmokeDetected || aiHumanDetected || flameDetected || smokeDetected;
 
-    const hasBbox = aiBbox && aiBbox.length === 4;
+    const hasBbox = false; // aiBbox && aiBbox.length === 4;
     const boxLeft = hasBbox ? (aiBbox[0] / 960) * 100 : 0;
     const boxTop = hasBbox ? (aiBbox[1] / 540) * 100 : 0;
     const boxWidth = hasBbox ? ((aiBbox[2] - aiBbox[0]) / 960) * 100 : 0;
@@ -972,43 +978,68 @@ export const DashboardScreen = () => {
                             <Text style={styles.loadingText}>QUERYING SQL SECURE DATABASE...</Text>
                         </View>
                     ) : (
-                        <ScrollView style={styles.logsList}>
-                            {eventLogs.map((item) => (
-                                <Pressable 
-                                    key={item.id} 
-                                    style={styles.logCard}
-                                    onPress={() => setSelectedEvent(item)}
-                                >
-                                    <View style={styles.logCardTop}>
-                                        <Text style={styles.logId}>#{item.id}</Text>
-                                        <Text style={styles.logTime}>
-                                            {item.created_at?.replace('T', ' ').substring(11, 19)}
-                                        </Text>
-                                        <View style={[
-                                            styles.logRiskBadge,
-                                            item.risk_level === 'CRITICAL' || item.risk_level === 'HIGH' || item.risk_level === 'EMERGENCY'
-                                                ? styles.logRiskAlert : styles.logRiskSafe
-                                        ]}>
-                                            <Text style={styles.logRiskText}>{item.risk_level}</Text>
+                        <>
+                            <ScrollView style={styles.logsList}>
+                                {paginatedEvents.map((item) => (
+                                    <Pressable 
+                                        key={item.id} 
+                                        style={styles.logCard}
+                                        onPress={() => setSelectedEvent(item)}
+                                    >
+                                        <View style={styles.logCardTop}>
+                                            <Text style={styles.logId}>#{item.id}</Text>
+                                            <Text style={styles.logTime}>
+                                                {item.created_at?.replace('T', ' ').substring(11, 19)}
+                                            </Text>
+                                            <View style={[
+                                                styles.logRiskBadge,
+                                                item.risk_level === 'CRITICAL' || item.risk_level === 'HIGH' || item.risk_level === 'EMERGENCY'
+                                                    ? styles.logRiskAlert : styles.logRiskSafe
+                                            ]}>
+                                                <Text style={styles.logRiskText}>{item.risk_level}</Text>
+                                            </View>
                                         </View>
-                                    </View>
-                                    <Text style={styles.logMessage}>{item.message}</Text>
-                                    <View style={styles.logCardBottom}>
-                                        <Text style={styles.logMeta}>SRC: {item.source}</Text>
-                                        {item.snapshot_path ? (
-                                            <Text style={styles.viewFrameText}>VIEW IMAGE SNAPSHOT</Text>
-                                        ) : (
-                                            <Text style={styles.noMediaText}>NO MEDIA</Text>
-                                        )}
-                                    </View>
-                                </Pressable>
-                            ))}
-                            {eventLogs.length === 0 && (
-                                <Text style={styles.emptyLogsText}>
-                                    No threat logs found in database. System secure.
-                                </Text>
+                                        <Text style={styles.logMessage}>{item.message}</Text>
+                                        <View style={styles.logCardBottom}>
+                                            <Text style={styles.logMeta}>SRC: {item.source}</Text>
+                                            {item.snapshot_path ? (
+                                                <Text style={styles.viewFrameText}>VIEW IMAGE SNAPSHOT</Text>
+                                            ) : (
+                                                <Text style={styles.noMediaText}>NO MEDIA</Text>
+                                            )}
+                                        </View>
+                                    </Pressable>
+                                ))}
+                                {eventLogs.length === 0 && (
+                                    <Text style={styles.emptyLogsText}>
+                                        No threat logs found in database. System secure.
+                                    </Text>
+                                )}
+                            </ScrollView>
+
+                            {/* Pagination Controls */}
+                            {eventLogs.length > 0 && (
+                                <View style={styles.paginationContainer}>
+                                    <Pressable
+                                        style={[styles.paginationBtn, currentPage === 1 && styles.paginationBtnDisabled]}
+                                        disabled={currentPage === 1}
+                                        onPress={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                    >
+                                        <Text style={styles.paginationBtnText}>&larr; PREV</Text>
+                                    </Pressable>
+                                    <Text style={styles.paginationText}>
+                                        PAGE {currentPage} OF {totalPages || 1}
+                                    </Text>
+                                    <Pressable
+                                        style={[styles.paginationBtn, (currentPage === totalPages || totalPages === 0) && styles.paginationBtnDisabled]}
+                                        disabled={currentPage === totalPages || totalPages === 0}
+                                        onPress={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                    >
+                                        <Text style={styles.paginationBtnText}>NEXT &rarr;</Text>
+                                    </Pressable>
+                                </View>
                             )}
-                        </ScrollView>
+                        </>
                     )}
                 </View>
             )}
@@ -2617,5 +2648,35 @@ const styles = StyleSheet.create({
         fontFamily: 'monospace',
         textAlign: 'center',
         marginTop: 2,
+    },
+    paginationContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 16,
+        marginTop: 12,
+        paddingBottom: 24,
+    },
+    paginationBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    },
+    paginationBtnDisabled: {
+        opacity: 0.35,
+    },
+    paginationBtnText: {
+        fontSize: 10,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+        fontWeight: 'bold',
+    },
+    paginationText: {
+        fontSize: 10,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
     },
 });

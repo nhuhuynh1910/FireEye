@@ -57,8 +57,8 @@ export const VideoFeed = () => {
 
     const showLive = isBackendConnected && isCameraOnline;
 
-    // Calculate bounding box percentages relative to 960x540 coordinates
-    const hasBbox = aiBbox && aiBbox.length === 4;
+    // Calculate bounding box percentages relative to 960x540 coordinates (Disabled client-side drawing; backend draws on video stream directly)
+    const hasBbox = false; // aiBbox && aiBbox.length === 4;
     const shouldShowHtmlBbox = hasBbox && (!showLive || overallAlertLevel === "safe");
     const boxLeft = hasBbox ? (aiBbox[0] / 960) * 100 : 0;
     const boxTop = hasBbox ? (aiBbox[1] / 540) * 100 : 0;

@@ -186,6 +186,20 @@ export const api = {
     },
 
     /**
+     * Register a new face directly from Dahua camera snapshot
+     */
+    async registerFaceFromCamera(name, role) {
+        const formData = new FormData();
+        formData.append("name", name);
+        formData.append("role", role);
+
+        return request(`${API_BASE_URL}/api/faces/register-camera`, {
+            method: "POST",
+            body: formData
+        });
+    },
+
+    /**
      * Match face from live Dahua camera snapshot
      */
     async matchCameraFace() {

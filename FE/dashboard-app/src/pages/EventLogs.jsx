@@ -1,5 +1,4 @@
-/* pages/EventLogs.jsx */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../services/api';
 import { useSystem } from '../store/SystemContext';
 
@@ -7,6 +6,17 @@ export const EventLogs = () => {
     const { events, fetchEvents } = useSystem();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [events.length]);
+
+    const totalPages = Math.ceil(events.length / itemsPerPage);
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const currentEvents = events.slice(indexOfFirstItem, indexOfLastItem);
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
@@ -52,7 +62,7 @@ export const EventLogs = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {events.map((event) => (
+                            {currentEvents.map((event) => (
                                 <tr key={event.id} onClick={() => setSelectedEvent(event)}>
                                     <td>#{event.id}</td>
                                     <td>{formatTime(event.created_at)}</td>
@@ -93,6 +103,31 @@ export const EventLogs = () => {
                     </table>
                 )}
             </div>
+
+            {/* Pagination Controls */}
+            {events.length > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '16px' }}>
+                    <button
+                        className="btn-tech-action"
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        style={{ marginTop: 0 }}
+                    >
+                        &larr; PREV
+                    </button>
+                    <span style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                        PAGE {currentPage} OF {totalPages || 1}
+                    </span>
+                    <button
+                        className="btn-tech-action"
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                        style={{ marginTop: 0 }}
+                    >
+                        NEXT &rarr;
+                    </button>
+                </div>
+            )}
 
             {/* View Snapshot Modal */}
             {selectedEvent && (

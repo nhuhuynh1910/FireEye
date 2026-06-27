@@ -68,64 +68,57 @@ LOOP_DELAY = 0.03
 TOP_K_BOXES = 30
 
 
-class VideoGrabber:
-    def __init__(self, rtsp_url):
-        self.rtsp_url = rtsp_url
-        self.cap = None
+class HTTPFrameGrabber:
+    def __init__(self, frame_url):
+        self.frame_url = frame_url
         self.frame = None
         self.ret = False
         self.running = False
         self.lock = threading.Lock()
         self.thread = None
         self.last_frame_time = 0.0
+        self.session = None
 
     def start(self):
         if self.running:
             return
         self.running = True
-        self.thread = threading.Thread(target=self._grab_loop, name="AIVideoGrabberThread", daemon=True)
+        self.session = requests.Session()
+        self.thread = threading.Thread(target=self._grab_loop, name="AIHTTPGrabberThread", daemon=True)
         self.thread.start()
-        print("AI VideoGrabber thread started.")
+        print("AI HTTPFrameGrabber thread started.")
 
     def stop(self):
         self.running = False
         if self.thread:
             self.thread.join(timeout=2.0)
-        if self.cap:
-            self.cap.release()
-            self.cap = None
-        print("AI VideoGrabber thread stopped.")
+        if self.session:
+            self.session.close()
+            self.session = None
+        print("AI HTTPFrameGrabber thread stopped.")
 
     def _grab_loop(self):
         while self.running:
-            if self.cap is None or not self.cap.isOpened():
-                if self.cap:
-                    self.cap.release()
-                print(f"AI connecting to RTSP: {self.rtsp_url}")
-                self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
-                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                if not self.cap.isOpened():
-                    print("AI failed to open camera stream. Retrying in 3 seconds...")
-                    time.sleep(3)
-                    continue
-                print("AI camera stream connected successfully.")
+            try:
+                response = self.session.get(self.frame_url, timeout=1.0)
+                if response.status_code == 200:
+                    image_bytes = np.frombuffer(response.content, dtype=np.uint8)
+                    frame = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
+                    
+                    if frame is not None:
+                        with self.lock:
+                            self.ret = True
+                            self.frame = frame
+                            self.last_frame_time = time.time()
+                    else:
+                        print("AI failed to decode JPEG frame")
+                else:
+                    print(f"AI failed to fetch frame, HTTP status: {response.status_code}")
+                    time.sleep(0.1)
+            except Exception as e:
+                print(f"AI failed to connect to local backend frame endpoint: {e}")
+                time.sleep(1.0)
 
-            # Read frame
-            ret, frame = self.cap.read()
-            if not ret:
-                print("AI failed to read frame from camera stream. Reconnecting...")
-                if self.cap:
-                    self.cap.release()
-                self.cap = None
-                time.sleep(1)
-                continue
-
-            with self.lock:
-                self.ret = ret
-                self.frame = frame
-                self.last_frame_time = time.time()
-
-            # Yield CPU
             time.sleep(0.01)
 
     def get_latest_frame(self):
@@ -330,8 +323,8 @@ def main():
         format_type=FormatType.FLOAT32
     )
 
-    print("Opening camera via VideoGrabber...")
-    grabber = VideoGrabber(RTSP_URL)
+    print("Opening camera via HTTPFrameGrabber...")
+    grabber = HTTPFrameGrabber(API_URL.replace("/api/ai/detect", "/api/camera/raw-frame"))
     grabber.start()
 
     print("Starting AI inference... Ctrl+C để dừng")

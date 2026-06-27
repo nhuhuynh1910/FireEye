@@ -71,12 +71,6 @@ const MainLayout = ({ onOpenChangePassword }) => {
                         Dashboard
                     </button>
                     <button
-                        className={`nav-tab-btn ${activeTab === 'faces' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('faces')}
-                    >
-                        Face Database
-                    </button>
-                    <button
                         className={`nav-tab-btn ${activeTab === 'events' ? 'active' : ''}`}
                         onClick={() => setActiveTab('events')}
                     >
