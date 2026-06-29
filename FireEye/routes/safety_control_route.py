@@ -46,7 +46,6 @@ class SafetyConnectionManager:
         self.active_connections: Dict[int, WebSocket] = {}  # {user_id: websocket}
 
     async def connect(self, user_id: int, websocket: WebSocket):
-        await websocket.accept()
         self.active_connections[user_id] = websocket
         # Phát trạng thái trực ca hiện tại cho client vừa kết nối
         await websocket.send_json({
@@ -374,9 +373,10 @@ async def handle_session_timeout(session_token: str, delay: int):
 # --- WEBSOCKET REAL-TIME VOTING PROTOCOL ---
 @router.websocket("/ws")
 async def safety_ws_endpoint(websocket: WebSocket):
-    # Trích xuất access token từ cookie để xác thực kết nối WebSocket
-    token = websocket.cookies.get("access_token")
+    # Trích xuất access token từ query parameters hoặc cookie để xác thực kết nối WebSocket
+    token = websocket.query_params.get("token") or websocket.cookies.get("access_token")
     if not token:
+        await websocket.accept()
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
         
@@ -385,20 +385,25 @@ async def safety_ws_endpoint(websocket: WebSocket):
         payload = decode_jwt(token)
         sub_val = payload.get("sub")
         if sub_val is None:
+            await websocket.accept()
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
         user_id = int(sub_val)
         user = get_user_by_id(user_id)
         if not user or user.get("is_active", 1) == 0:
             # Chặn kết nối nếu user bị khoá (Soft block)
+            await websocket.accept()
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
     except Exception:
+        await websocket.accept()
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
     # Chấp nhận kết nối và đăng ký vào Pool
+    await websocket.accept()
     await manager.connect(user_id, websocket)
+    print(f"Safety WebSocket connected: user_id={user_id}")
     
     try:
         while True:

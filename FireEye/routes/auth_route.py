@@ -2,13 +2,22 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 # pyrefly: ignore [missing-import]
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
+import uuid
+import hmac
+from typing import Optional
+from config.settings import SYSTEM_SECRET_KEY
 from services.db_service import (
     get_user_by_username, 
     update_user_password, 
     get_user_by_id,
     increment_failed_login,
-    reset_failed_login
+    reset_failed_login,
+    get_user_by_phone,
+    insert_user_session,
+    get_active_sessions_count,
+    delete_oldest_session,
+    delete_user_session
 )
 from services.auth_service import (
     verify_password,
@@ -17,7 +26,8 @@ from services.auth_service import (
     create_refresh_token,
     decode_jwt,
     get_current_user,
-    is_password_strong
+    is_password_strong,
+    ACCESS_TOKEN_EXPIRE_MINUTES
 )
 
 router = APIRouter(
@@ -26,20 +36,29 @@ router = APIRouter(
 )
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    phone_number: str
+    secret_key: str
+    system_secret_key: str
+    device_name: Optional[str] = "Unknown Device"
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
 
 @router.post("/login")
-def login(payload: LoginRequest, response: Response):
-    user = get_user_by_username(payload.username)
+def login(payload: LoginRequest, request: Request, response: Response):
+    # Verify System Secret Key first
+    if not hmac.compare_digest(payload.system_secret_key, SYSTEM_SECRET_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Mã khóa hệ thống không chính xác"
+        )
+
+    user = get_user_by_phone(payload.phone_number)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Tên đăng nhập hoặc mật khẩu không chính xác"
+            detail="Số điện thoại hoặc mã khóa không chính xác"
         )
     
     # 1. Check if account is deactivated
@@ -69,7 +88,7 @@ def login(payload: LoginRequest, response: Response):
             pass
             
     # 3. Verify credentials
-    if not verify_password(payload.password, user["password_hash"]):
+    if not verify_password(payload.secret_key, user["password_hash"]):
         attempts, locked_time = increment_failed_login(user["id"])
         if locked_time:
             raise HTTPException(
@@ -87,8 +106,28 @@ def login(payload: LoginRequest, response: Response):
     if user.get("failed_login_attempts", 0) > 0 or user.get("locked_until"):
         reset_failed_login(user["id"])
         
-    access_token = create_access_token(user["id"], user["role"])
-    refresh_token = create_refresh_token(user["id"])
+    # Max active sessions limit: default is 3
+    MAX_SESSIONS = 3
+    active_count = get_active_sessions_count(user["id"])
+    if active_count >= MAX_SESSIONS:
+        delete_oldest_session(user["id"])
+        
+    jti = uuid.uuid4().hex
+    expires_at = (datetime.now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")
+    ip_address = request.client.host if request.client else "Unknown IP"
+    
+    # Save the session to SQLite
+    insert_user_session(
+        user_id=user["id"],
+        token_id=jti,
+        phone_number=user["phone_number"],
+        device_name=payload.device_name,
+        ip_address=ip_address,
+        expires_at=expires_at
+    )
+    
+    access_token = create_access_token(user["id"], user["role"], jti)
+    refresh_token = create_refresh_token(user["id"], jti)
     
     # Set cookies
     response.set_cookie(
@@ -110,9 +149,12 @@ def login(payload: LoginRequest, response: Response):
     
     return {
         "success": True,
+        "token": access_token,
+        "refresh_token": refresh_token,
         "user": {
             "id": user["id"],
             "username": user["username"],
+            "phone_number": user["phone_number"],
             "full_name": user["full_name"],
             "role": user["role"],
             "is_first_login": bool(user["is_first_login"])
@@ -120,7 +162,10 @@ def login(payload: LoginRequest, response: Response):
     }
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(response: Response, current_user: dict = Depends(get_current_user)):
+    jti = current_user.get("jti")
+    if jti:
+        delete_user_session(jti)
     response.delete_cookie(key="access_token", path="/")
     response.delete_cookie(key="refresh_token", path="/")
     return {"success": True, "message": "Logged out successfully"}
@@ -130,6 +175,7 @@ def get_me(current_user: dict = Depends(get_current_user)):
     return {
         "id": current_user["id"],
         "username": current_user["username"],
+        "phone_number": current_user.get("phone_number"),
         "full_name": current_user["full_name"],
         "role": current_user["role"],
         "is_first_login": bool(current_user["is_first_login"])

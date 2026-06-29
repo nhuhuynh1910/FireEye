@@ -21,11 +21,14 @@ export const AuthProvider = ({ children }) => {
         }
     }, []);
 
-    const login = useCallback(async (username, password) => {
+    const login = useCallback(async (phoneNumber, secretKey, systemSecretKey) => {
         setIsLoading(true);
         try {
-            const res = await api.login(username, password);
+            const res = await api.login(phoneNumber, secretKey, systemSecretKey);
             if (res && res.success) {
+                if (res.token) {
+                    localStorage.setItem('access_token', res.token);
+                }
                 setUser(res.user);
                 setIsAuthenticated(true);
                 return res.user;
@@ -47,6 +50,7 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
             console.error("Error logging out from server:", err);
         } finally {
+            localStorage.removeItem('access_token');
             setUser(null);
             setIsAuthenticated(false);
             setIsLoading(false);

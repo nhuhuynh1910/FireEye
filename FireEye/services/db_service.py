@@ -132,6 +132,21 @@ def init_db():
         )
     """)
 
+    # Tạo bảng lưu phiên đăng nhập của thiết bị
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_id TEXT UNIQUE NOT NULL,
+            phone_number TEXT,
+            device_name TEXT,
+            ip_address TEXT,
+            last_active TEXT,
+            expires_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -486,18 +501,39 @@ def create_default_admin_if_not_exists():
     
     conn = get_connection()
     cursor = conn.cursor()
-    # Kiểm tra xem tài khoản 'admin' đã tồn tại chưa
-    cursor.execute("SELECT COUNT(*) as count FROM users WHERE username = 'admin'")
-    row = cursor.fetchone()
     
-    if row["count"] == 0:
+    # 1. Seed OWNER (admin)
+    cursor.execute("SELECT COUNT(*) as count FROM users WHERE username = 'admin'")
+    if cursor.fetchone()["count"] == 0:
         admin_hash = hash_password("adminpassword")
         cursor.execute("""
             INSERT INTO users (username, password_hash, full_name, role, phone_number, fcm_token, face_profile_path, is_active, is_first_login, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
-        """, ("admin", admin_hash, "System Administrator", "OWNER", "+84999999999", "", "", get_now()))
+        """, ("admin", admin_hash, "System Administrator (Owner)", "OWNER", "+84999999999", "", "", get_now()))
         conn.commit()
         print("Default Owner user seeded successfully!")
+        
+    # 2. Seed ADMIN (admin1)
+    cursor.execute("SELECT COUNT(*) as count FROM users WHERE username = 'admin1'")
+    if cursor.fetchone()["count"] == 0:
+        admin1_hash = hash_password("adminpassword123")
+        cursor.execute("""
+            INSERT INTO users (username, password_hash, full_name, role, phone_number, fcm_token, face_profile_path, is_active, is_first_login, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
+        """, ("admin1", admin1_hash, "Zone Manager (Admin)", "ADMIN", "+84911111111", "", "", get_now()))
+        conn.commit()
+        print("Default Admin user seeded successfully!")
+        
+    # 3. Seed STAFF (staff1)
+    cursor.execute("SELECT COUNT(*) as count FROM users WHERE username = 'staff1'")
+    if cursor.fetchone()["count"] == 0:
+        staff1_hash = hash_password("staffpassword123")
+        cursor.execute("""
+            INSERT INTO users (username, password_hash, full_name, role, phone_number, fcm_token, face_profile_path, is_active, is_first_login, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
+        """, ("staff1", staff1_hash, "Duty Operator (Staff)", "STAFF", "+84922222222", "", "", get_now()))
+        conn.commit()
+        print("Default Staff user seeded successfully!")
         
     conn.close()
 
@@ -657,3 +693,94 @@ def reset_failed_login(user_id: int):
     """, (user_id,))
     conn.commit()
     conn.close()
+
+
+def get_user_by_phone(phone_number: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE phone_number = ?", (phone_number,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def insert_user_session(
+    user_id: int,
+    token_id: str,
+    phone_number: str,
+    device_name: Optional[str],
+    ip_address: Optional[str],
+    expires_at: str
+) -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO user_sessions (user_id, token_id, phone_number, device_name, ip_address, last_active, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, token_id, phone_number, device_name, ip_address, get_now(), expires_at))
+    conn.commit()
+    session_id = cursor.lastrowid
+    conn.close()
+    return session_id
+
+
+def get_active_sessions_count(user_id: int) -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT COUNT(*) as count 
+        FROM user_sessions 
+        WHERE user_id = ? AND expires_at > ?
+    """, (user_id, get_now()))
+    row = cursor.fetchone()
+    conn.close()
+    return row["count"] if row else 0
+
+
+def delete_oldest_session(user_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id 
+        FROM user_sessions 
+        WHERE user_id = ? 
+        ORDER BY last_active ASC 
+        LIMIT 1
+    """, (user_id,))
+    row = cursor.fetchone()
+    if row:
+        cursor.execute("DELETE FROM user_sessions WHERE id = ?", (row["id"],))
+        conn.commit()
+    conn.close()
+
+
+def delete_user_session(token_id: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_sessions WHERE token_id = ?", (token_id,))
+    conn.commit()
+    rowcount = cursor.rowcount
+    conn.close()
+    return rowcount > 0
+
+
+def is_session_valid(token_id: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT expires_at 
+        FROM user_sessions 
+        WHERE token_id = ?
+    """, (token_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        return False
+        
+    expires_at_str = row["expires_at"]
+    try:
+        expires_at_dt = datetime.strptime(expires_at_str, "%Y-%m-%d %H:%M:%S")
+        return datetime.now() < expires_at_dt
+    except Exception:
+        return False

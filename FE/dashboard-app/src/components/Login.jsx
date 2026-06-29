@@ -4,22 +4,25 @@ import logoImg from '../assets/image-removebg-preview.jpg';
 
 export const Login = () => {
     const { login } = useAuth();
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [secretKey, setSecretKey] = useState('');
+    const [systemSecretKey, setSystemSecretKey] = useState('');
+    const [showSecretKey, setShowSecretKey] = useState(false);
+    const [showSystemSecretKey, setShowSystemSecretKey] = useState(false);
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
-        if (!username.trim() || !password.trim()) {
-            setError('Please enter username and password.');
+        if (!phoneNumber.trim() || !secretKey.trim() || !systemSecretKey.trim()) {
+            setError('Please enter phone number, secret key and system key.');
             return;
         }
 
         setSubmitting(true);
         try {
-            await login(username, password);
+            await login(phoneNumber, secretKey, systemSecretKey);
         } catch (err) {
             setError(err.message || 'Login failed. Please check your credentials.');
         } finally {
@@ -54,42 +57,120 @@ export const Login = () => {
                     )}
 
                     <div className="input-group-glow">
-                        <label htmlFor="username">USERNAME</label>
+                        <label htmlFor="phoneNumber">PHONE NUMBER</label>
                         <div className="input-with-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="input-icon">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="12" cy="7" r="4"></circle>
+                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
                             </svg>
                             <input
-                                id="username"
-                                type="text"
-                                placeholder="Enter username..."
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value)}
+                                id="phoneNumber"
+                                type="tel"
+                                placeholder="Enter phone number..."
+                                value={phoneNumber}
+                                onChange={(e) => setPhoneNumber(e.target.value)}
                                 disabled={submitting}
-                                autoComplete="username"
+                                autoComplete="tel"
                                 required
                             />
                         </div>
                     </div>
 
                     <div className="input-group-glow">
-                        <label htmlFor="password">PASSWORD</label>
+                        <label htmlFor="secretKey">SECRET KEY</label>
                         <div className="input-with-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="input-icon">
                                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                             </svg>
                             <input
-                                id="password"
-                                type="password"
-                                placeholder="Enter password..."
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
+                                id="secretKey"
+                                type={showSecretKey ? 'text' : 'password'}
+                                placeholder="Enter secret key..."
+                                value={secretKey}
+                                onChange={(e) => setSecretKey(e.target.value)}
                                 disabled={submitting}
                                 autoComplete="current-password"
                                 required
+                                style={{ paddingRight: '42px' }}
                             />
+                            <button
+                                type="button"
+                                onClick={() => setShowSecretKey(!showSecretKey)}
+                                style={{
+                                    position: 'absolute',
+                                    right: '12px',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--text-muted)',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
+                            >
+                                {showSecretKey ? (
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    </svg>
+                                ) : (
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="input-group-glow">
+                        <label htmlFor="systemSecretKey">SYSTEM SECRET KEY</label>
+                        <div className="input-with-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="input-icon">
+                                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                                <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                                <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                            </svg>
+                            <input
+                                id="systemSecretKey"
+                                type={showSystemSecretKey ? 'text' : 'password'}
+                                placeholder="Enter server system key..."
+                                value={systemSecretKey}
+                                onChange={(e) => setSystemSecretKey(e.target.value)}
+                                disabled={submitting}
+                                required
+                                style={{ paddingRight: '42px' }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowSystemSecretKey(!showSystemSecretKey)}
+                                style={{
+                                    position: 'absolute',
+                                    right: '12px',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--text-muted)',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
+                            >
+                                {showSystemSecretKey ? (
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    </svg>
+                                ) : (
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                )}
+                            </button>
                         </div>
                     </div>
 

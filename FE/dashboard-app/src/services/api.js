@@ -40,12 +40,17 @@ const request = async (url, options = {}) => {
 
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.detail || `Request failed with status ${response.status}`);
+            const errorDetail = typeof errData.detail === 'object'
+                ? JSON.stringify(errData.detail)
+                : errData.detail;
+            throw new Error(errorDetail || `Request failed with status ${response.status}`);
         }
 
         return response.json();
     } catch (err) {
-        console.error("API error:", err);
+        if (err.message !== "Unauthorized") {
+            console.error("API error:", err);
+        }
         throw err;
     }
 };
@@ -153,6 +158,13 @@ export const api = {
     async rejectSprinkler(zoneId) {
         return request(`${API_BASE_URL}/api/sprinkler/zone/${zoneId}/reject`, {
             method: "POST"
+        });
+    },
+
+    async safetyControl(zoneId, action) {
+        return request(`${API_BASE_URL}/api/v1/safety/control`, {
+            method: "POST",
+            body: JSON.stringify({ zone_id: zoneId, action })
         });
     },
 
@@ -315,10 +327,10 @@ export const api = {
 
     // --- Authentication & User Management APIs ---
 
-    async login(username, password) {
+    async login(phone_number, secret_key, system_secret_key, device_name = "Web Dashboard") {
         return request(`${API_BASE_URL}/api/auth/login`, {
             method: "POST",
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ phone_number, secret_key, system_secret_key, device_name })
         });
     },
 
@@ -343,17 +355,17 @@ export const api = {
         return request(`${API_BASE_URL}/api/users`);
     },
 
-    async createUser(username, password, fullName, role) {
+    async createUser(username, password, phone_number, system_secret_key, fullName, role) {
         return request(`${API_BASE_URL}/api/users`, {
             method: "POST",
-            body: JSON.stringify({ username, password, full_name: fullName, role })
+            body: JSON.stringify({ username, password, phone_number, system_secret_key, full_name: fullName, role })
         });
     },
 
-    async updateUser(userId, fullName, role, password = null, isActive = true) {
+    async updateUser(userId, fullName, role, password = null, phone_number = null, isActive = true) {
         return request(`${API_BASE_URL}/api/users/${userId}`, {
             method: "PUT",
-            body: JSON.stringify({ full_name: fullName, role, password, is_active: isActive })
+            body: JSON.stringify({ full_name: fullName, role, password, phone_number, is_active: isActive })
         });
     },
 

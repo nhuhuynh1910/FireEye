@@ -90,3 +90,5 @@ try:
     CAMERA_PHYSICAL_ROTATION = int(os.getenv("CAMERA_PHYSICAL_ROTATION", "0"))
 except ValueError:
     CAMERA_PHYSICAL_ROTATION = 0
+
+SYSTEM_SECRET_KEY = os.getenv("SYSTEM_SECRET_KEY", "default_server_secret_key_123456")

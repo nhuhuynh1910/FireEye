@@ -87,27 +87,44 @@ def verify_password(password: str, hashed: str) -> bool:
     except Exception:
         return False
 
-def create_access_token(user_id: int, role: str) -> str:
+def create_access_token(user_id: int, role: str, jti: str = None) -> str:
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    if not jti:
+        import uuid
+        jti = uuid.uuid4().hex
     payload = {
         "sub": str(user_id),
         "role": role,
         "exp": expire.timestamp(),
-        "type": "access"
+        "type": "access",
+        "jti": jti
     }
     return encode_jwt(payload)
 
-def create_refresh_token(user_id: int) -> str:
+def create_refresh_token(user_id: int, jti: str = None) -> str:
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    if not jti:
+        import uuid
+        jti = uuid.uuid4().hex
     payload = {
         "sub": str(user_id),
         "exp": expire.timestamp(),
-        "type": "refresh"
+        "type": "refresh",
+        "jti": jti
     }
     return encode_jwt(payload)
 
 async def get_current_user(request: Request):
-    token = request.cookies.get("access_token")
+    # 1. Try to get token from Authorization header (Bearer <JWT>)
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1]
+    
+    # 2. Fallback to cookies
+    if not token:
+        token = request.cookies.get("access_token")
+        
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -120,6 +137,22 @@ async def get_current_user(request: Request):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token type"
             )
+            
+        # Validate that the session jti exists and is active in database
+        jti = payload.get("jti")
+        if not jti:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token is missing session ID"
+            )
+            
+        from services.db_service import is_session_valid
+        if not is_session_valid(jti):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session has expired or was logged out"
+            )
+            
         user_id = int(payload.get("sub"))
         user = get_user_by_id(user_id)
         if not user:
@@ -127,7 +160,10 @@ async def get_current_user(request: Request):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found"
             )
-        return user
+            
+        user_copy = dict(user)
+        user_copy["jti"] = jti
+        return user_copy
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -135,7 +171,7 @@ async def get_current_user(request: Request):
         )
 
 def require_admin(current_user = Depends(get_current_user)):
-    if current_user["role"] != "ADMIN":
+    if current_user["role"] not in ("ADMIN", "OWNER"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: Admin access required"

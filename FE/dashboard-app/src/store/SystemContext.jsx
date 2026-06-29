@@ -163,22 +163,25 @@ export const SystemProvider = ({ children }) => {
     // Toggle Sprinkler ON/OFF for a specific Zone
     const toggleZoneSprinkler = useCallback(async (zoneId) => {
         const zoneData = zones[zoneId] || { pump: "OFF" };
-        const nextAction = zoneData.pump === "ON" ? "OFF" : "ON";
+        const isCurrentlyOn = zoneData.pump === "ON";
+        const actionStr = isCurrentlyOn ? "SPRINKLER_OFF" : "SPRINKLER_ON";
         try {
-            if (nextAction === "ON") {
-                await api.acceptSprinkler(zoneId);
-            } else {
-                await api.rejectSprinkler(zoneId);
+            const res = await api.safetyControl(zoneId, actionStr);
+            
+            if (res.status === "VOTING_REQUIRED") {
+                console.log("Voting required, session created:", res.session_token);
+            } else if (res.status === "OWNER_OVERRIDE_EXECUTED" || res.status === "EMERGENCY_EXECUTED") {
+                const finalState = isCurrentlyOn ? "OFF" : "ON";
+                // Update local state instantly for UI responsiveness
+                setZones(prev => ({
+                    ...prev,
+                    [zoneId]: {
+                        ...prev[zoneId],
+                        pump: finalState
+                    }
+                }));
+                fetchEvents();
             }
-            // Update local state instantly for UI responsiveness
-            setZones(prev => ({
-                ...prev,
-                [zoneId]: {
-                    ...prev[zoneId],
-                    pump: nextAction
-                }
-            }));
-            fetchEvents();
         } catch (err) {
             console.error(`Failed to control sprinkler for zone ${zoneId}:`, err);
         }
@@ -299,8 +302,14 @@ export const SystemProvider = ({ children }) => {
     // Get safety WebSocket URL
     const getSafetyWSUrl = () => {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const host = BACKEND_IP ? (BACKEND_IP.includes(":") ? BACKEND_IP : `${BACKEND_IP}:8000`) : window.location.host;
-        return `${protocol}//${host}/api/v1/safety/ws`;
+        // Luôn đi qua cùng host/port với trang web (Vite proxy sẽ chuyển tiếp /api/* về backend)
+        const host = window.location.host;
+        let url = `${protocol}//${host}/api/v1/safety/ws`;
+        const token = localStorage.getItem('access_token');
+        if (token) {
+            url += `?token=${encodeURIComponent(token)}`;
+        }
+        return url;
     };
 
     // WebSocket real-time safety control/voting alerts

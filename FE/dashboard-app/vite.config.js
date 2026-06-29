@@ -13,6 +13,7 @@ export default defineConfig({
       '/api': {
         target: `http://${BACKEND_IP}:8000`,
         changeOrigin: true,
+        ws: true,
       },
       '/ws': {
         target: `ws://${BACKEND_IP}:8000`,

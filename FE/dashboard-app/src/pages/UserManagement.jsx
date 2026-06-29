@@ -17,6 +17,8 @@ export const UserManagement = () => {
     // Form inputs
     const [formUsername, setFormUsername] = useState('');
     const [formPassword, setFormPassword] = useState('');
+    const [formPhoneNumber, setFormPhoneNumber] = useState('');
+    const [formSystemSecretKey, setFormSystemSecretKey] = useState('');
     const [formFullName, setFormFullName] = useState('');
     const [formRole, setFormRole] = useState('STAFF');
     const [formSubmitting, setFormSubmitting] = useState(false);
@@ -35,7 +37,7 @@ export const UserManagement = () => {
     };
 
     useEffect(() => {
-        if (currentUser && currentUser.role === 'ADMIN') {
+        if (currentUser && (currentUser.role === 'ADMIN' || currentUser.role === 'OWNER')) {
             loadUsers();
         }
     }, [currentUser]);
@@ -45,6 +47,8 @@ export const UserManagement = () => {
         setSelectedUserId(null);
         setFormUsername('');
         setFormPassword('');
+        setFormPhoneNumber('');
+        setFormSystemSecretKey('');
         setFormFullName('');
         setFormRole('STAFF');
         setError('');
@@ -56,6 +60,7 @@ export const UserManagement = () => {
         setSelectedUserId(user.id);
         setFormUsername(user.username);
         setFormPassword(''); // blank unless changing
+        setFormPhoneNumber(user.phone_number || '');
         setFormFullName(user.full_name || '');
         setFormRole(user.role);
         setError('');
@@ -67,18 +72,18 @@ export const UserManagement = () => {
         setError('');
         setSuccess('');
 
-        if (modalMode === 'create' && (!formUsername.trim() || !formPassword.trim())) {
-            setError('Please enter username and password.');
+        if (modalMode === 'create' && (!formUsername.trim() || !formPassword.trim() || !formPhoneNumber.trim() || !formSystemSecretKey.trim())) {
+            setError('Please enter username, password, phone number and system key.');
             return;
         }
 
         setFormSubmitting(true);
         try {
             if (modalMode === 'create') {
-                await api.createUser(formUsername, formPassword, formFullName, formRole);
+                await api.createUser(formUsername, formPassword, formPhoneNumber, formSystemSecretKey, formFullName, formRole);
                 setSuccess(`Account "${formUsername}" created successfully!`);
             } else {
-                await api.updateUser(selectedUserId, formFullName, formRole, formPassword || null);
+                await api.updateUser(selectedUserId, formFullName, formRole, formPassword || null, formPhoneNumber || null);
                 setSuccess(`Account "${formUsername}" updated successfully!`);
             }
             setIsModalOpen(false);
@@ -113,7 +118,7 @@ export const UserManagement = () => {
         }
     };
 
-    if (currentUser.role !== 'ADMIN') {
+    if (currentUser.role !== 'ADMIN' && currentUser.role !== 'OWNER') {
         return (
             <div className="unauthorized-container">
                 <div className="unauthorized-card">
@@ -123,7 +128,7 @@ export const UserManagement = () => {
                         </svg>
                     </span>
                     <h2>Unauthorized Access</h2>
-                    <p>You do not have Administrator (ADMIN) permissions to view this page.</p>
+                    <p>You do not have Administrator (ADMIN/OWNER) permissions to view this page.</p>
                 </div>
             </div>
         );
@@ -159,6 +164,7 @@ export const UserManagement = () => {
                         <thead>
                             <tr>
                                 <th>USERNAME</th>
+                                <th>PHONE NUMBER</th>
                                 <th>FULL NAME</th>
                                 <th>ROLE</th>
                                 <th>DEFAULT PASSWORD</th>
@@ -169,7 +175,7 @@ export const UserManagement = () => {
                         <tbody>
                             {users.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>
+                                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>
                                         No users found.
                                     </td>
                                 </tr>
@@ -180,6 +186,7 @@ export const UserManagement = () => {
                                             <span className="username-badge">{u.username}</span>
                                             {u.id === currentUser.id && <span className="self-tag">(Your account)</span>}
                                         </td>
+                                        <td>{u.phone_number || '—'}</td>
                                         <td>{u.full_name || '—'}</td>
                                         <td>
                                             <span className={`role-badge ${u.role?.toLowerCase()}`}>
@@ -253,6 +260,32 @@ export const UserManagement = () => {
                                     required
                                 />
                             </div>
+
+                            <div className="form-group-glow">
+                                <label>PHONE NUMBER</label>
+                                <input
+                                    type="tel"
+                                    value={formPhoneNumber}
+                                    onChange={(e) => setFormPhoneNumber(e.target.value)}
+                                    disabled={formSubmitting}
+                                    placeholder="Example: +84999999999"
+                                    required
+                                />
+                            </div>
+
+                            {modalMode === 'create' && (
+                                <div className="form-group-glow">
+                                    <label>SYSTEM SECRET KEY</label>
+                                    <input
+                                        type="password"
+                                        value={formSystemSecretKey}
+                                        onChange={(e) => setFormSystemSecretKey(e.target.value)}
+                                        disabled={formSubmitting}
+                                        placeholder="Enter server system key..."
+                                        required
+                                    />
+                                </div>
+                            )}
 
                             <div className="form-group-glow">
                                 <label>FULL NAME</label>
