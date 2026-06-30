@@ -737,6 +737,9 @@ export const DashboardScreen = () => {
                         })}
                     </View>
 
+                    {/* PTZ CAMERA CONTROLLER */}
+                    <PTZController />
+
                      {/* ZONE STATUS MONITOR */}
                     <View style={styles.zonesMonitorCard}>
                         <Text style={styles.sectionTitle}>ZONE SECURITY MONITOR</Text>
