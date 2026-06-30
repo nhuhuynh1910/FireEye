@@ -72,6 +72,7 @@ export const SystemProvider = ({ children }) => {
     const [npuLoad, setNpuLoad] = useState(0);
     const [systemTemp, setSystemTemp] = useState(42.5);
     const [sprinklerState, setSprinklerState] = useState("OFF");
+    const [zones, setZones] = useState({});
     const [overallAlertLevel, setOverallAlertLevel] = useState("safe"); // safe, warning, danger
     
     // Sensor states
@@ -265,6 +266,40 @@ export const SystemProvider = ({ children }) => {
         }
     }, [sprinklerState, isBackendConnected, fetchEvents]);
 
+    // Toggle Zone-Specific Sprinkler ON/OFF
+    const toggleZoneSprinkler = useCallback(async (zoneId) => {
+        const currentZone = zones[zoneId];
+        const isCurrentlyOn = currentZone?.pump === "ON";
+        const nextAction = isCurrentlyOn ? "OFF" : "ON";
+        
+        try {
+            if (nextAction === "ON") {
+                await api.acceptZoneSprinkler(zoneId);
+            } else {
+                await api.rejectZoneSprinkler(zoneId);
+            }
+            setZones(prev => {
+                const updated = { ...prev };
+                if (updated[zoneId]) {
+                    updated[zoneId] = { ...updated[zoneId], pump: nextAction };
+                }
+                return updated;
+            });
+            fetchEvents();
+        } catch (err) {
+            console.error(`Failed to control sprinkler for zone ${zoneId}:`, err);
+            if (!isBackendConnected) {
+                setZones(prev => {
+                    const updated = { ...prev };
+                    if (updated[zoneId]) {
+                        updated[zoneId] = { ...updated[zoneId], pump: nextAction };
+                    }
+                    return updated;
+                });
+            }
+        }
+    }, [zones, isBackendConnected, fetchEvents]);
+
     // Emergency Stop: Turn off pump & clear simulated sensor alerts
     const triggerEmergencyStop = useCallback(async () => {
         try {
@@ -332,7 +367,7 @@ export const SystemProvider = ({ children }) => {
             };
 
             socket.onerror = (err) => {
-                console.error("AI WebSocket error:", err);
+                console.warn("AI WebSocket error (will auto-reconnect):", err?.message || "connection failed");
                 socket.close();
             };
         };
@@ -362,6 +397,9 @@ export const SystemProvider = ({ children }) => {
                 setIsCameraOnline(status.camera?.online || false);
                 setSprinklerState(status.sprinkler?.status || "OFF");
                 setOverallAlertLevel(status.overallAlertLevel || "safe");
+                if (status.zones) {
+                    setZones(status.zones);
+                }
                 
                 // Set IoT sensors
                 setSmokeValue(status.sensor?.smokeValue || 0);
@@ -405,6 +443,12 @@ export const SystemProvider = ({ children }) => {
                 setAiBbox(null);
                 setAiHumanDetected(false);
                 setHailoStatus("offline");
+                setZones({
+                    1: { temperature: 38.5, humidity: 62.0, gas: smokeValue, pump: sprinklerState, online: true },
+                    2: { temperature: 29.4, humidity: 48.0, gas: 12, pump: "OFF", online: true },
+                    3: { temperature: 21.8, humidity: 45.0, gas: 15, pump: "OFF", online: true },
+                    4: { temperature: 24.6, humidity: 52.0, gas: 8, pump: "OFF", online: true }
+                });
                 
                 // Fluctuating Simulated Telemetry
                 setNpuLoad(prev => {
@@ -482,6 +526,8 @@ export const SystemProvider = ({ children }) => {
             npuLoad,
             systemTemp,
             sprinklerState,
+            zones,
+            toggleZoneSprinkler,
             overallAlertLevel,
             smokeValue,
             flameValue,

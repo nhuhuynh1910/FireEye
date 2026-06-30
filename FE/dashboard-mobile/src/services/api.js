@@ -135,6 +135,31 @@ export const api = {
         if (!response.ok) throw new Error("Failed to fetch registered people");
         return response.json();
     },
+    /**
+     * Helper: Upload FormData via XMLHttpRequest (React Native compatible)
+     * React Native's fetch does not support { uri, name, type } objects in FormData,
+     * and Expo Go does not support fetch(uri).blob(). XMLHttpRequest is the only
+     * reliable method for file uploads in Expo Go.
+     */
+    _uploadFormData(url, formData) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", url);
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        resolve(JSON.parse(xhr.responseText));
+                    } catch {
+                        resolve({ success: true, raw: xhr.responseText });
+                    }
+                } else {
+                    reject(new Error(`Upload failed with status ${xhr.status}`));
+                }
+            };
+            xhr.onerror = () => reject(new Error("Network error during upload"));
+            xhr.send(formData);
+        });
+    },
 
     /**
      * Register a new face with avatar
@@ -143,18 +168,21 @@ export const api = {
         const formData = new FormData();
         formData.append("name", name);
         formData.append("role", role);
-        // imageFile: { uri, name, type } for React Native
+        // imageFile: { uri, name, type } — React Native FormData format
         formData.append("image", imageFile);
 
-        const response = await fetch(`${API_BASE_URL}/api/faces/register`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "multipart/form-data"
-            },
-            body: formData
-        });
-        if (!response.ok) throw new Error("Failed to register face");
-        return response.json();
+        return this._uploadFormData(`${API_BASE_URL}/api/faces/register`, formData);
+    },
+
+    /**
+     * Register a new face using the live Dahua camera snapshot
+     */
+    async registerCameraFace(name, role) {
+        const formData = new FormData();
+        formData.append("name", name);
+        formData.append("role", role);
+
+        return this._uploadFormData(`${API_BASE_URL}/api/faces/register-camera`, formData);
     },
 
     /**
@@ -171,18 +199,10 @@ export const api = {
      */
     async matchFaceImage(imageFile) {
         const formData = new FormData();
-        // imageFile: { uri, name, type } for React Native
+        // imageFile: { uri, name, type } — React Native FormData format
         formData.append("image", imageFile);
 
-        const response = await fetch(`${API_BASE_URL}/api/faces/match`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "multipart/form-data"
-            },
-            body: formData
-        });
-        if (!response.ok) throw new Error("Failed to match face image");
-        return response.json();
+        return this._uploadFormData(`${API_BASE_URL}/api/faces/match`, formData);
     },
 
     /**
@@ -302,6 +322,28 @@ export const api = {
             method: "POST"
         });
         if (!response.ok) throw new Error("Failed to mark notification as read");
+        return response.json();
+    },
+
+    /**
+     * Accept/Turn ON sprinkler for a specific zone
+     */
+    async acceptZoneSprinkler(zoneId) {
+        const response = await fetch(`${API_BASE_URL}/api/sprinkler/zone/${zoneId}/accept`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error(`Failed to turn ON sprinkler for zone ${zoneId}`);
+        return response.json();
+    },
+
+    /**
+     * Reject/Turn OFF sprinkler for a specific zone
+     */
+    async rejectZoneSprinkler(zoneId) {
+        const response = await fetch(`${API_BASE_URL}/api/sprinkler/zone/${zoneId}/reject`, {
+            method: "POST"
+        });
+        if (!response.ok) throw new Error(`Failed to turn OFF sprinkler for zone ${zoneId}`);
         return response.json();
     }
 };

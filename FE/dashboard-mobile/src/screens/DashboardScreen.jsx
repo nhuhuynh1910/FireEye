@@ -20,6 +20,8 @@ import { colors } from '../theme/colors';
 import { api } from '../services/api';
 import { WebView } from 'react-native-webview';
 import logoImg from '../../assets/logo.jpg';
+import * as ImagePicker from 'expo-image-picker';
+import { PTZController } from '../components/PTZController';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -104,6 +106,8 @@ export const DashboardScreen = () => {
         npuLoad,
         systemTemp,
         sprinklerState,
+        zones,
+        toggleZoneSprinkler,
         overallAlertLevel,
         smokeValue,
         flameValue,
@@ -155,6 +159,7 @@ export const DashboardScreen = () => {
     const [regName, setRegName] = useState("");
     const [regRole, setRegRole] = useState("Operator");
     const [regFile, setRegFile] = useState(null);
+    const [regMethod, setRegMethod] = useState("device_camera"); // "device_camera" | "gallery" | "cctv"
     const [isRegistering, setIsRegistering] = useState(false);
     const [regStatus, setRegStatus] = useState({ success: null, message: "" });
     const [verResult, setVerResult] = useState(null);
@@ -291,6 +296,68 @@ export const DashboardScreen = () => {
         }
     }, [activeTab, loadPeople]);
 
+    const handleTakePhoto = async () => {
+        try {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+                setRegStatus({ success: false, message: "Yêu cầu quyền truy cập camera bị từ chối." });
+                return;
+            }
+
+            const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+                setRegFile({
+                    uri: asset.uri,
+                    name: asset.fileName || 'photo.jpg',
+                    type: 'image/jpeg'
+                });
+                setRegMethod("device_camera");
+                setRegStatus({ success: null, message: "" });
+            }
+        } catch (err) {
+            console.error("Take photo error:", err);
+            setRegStatus({ success: false, message: "Không thể mở camera thiết bị." });
+        }
+    };
+
+    const handlePickImage = async () => {
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+                setRegStatus({ success: false, message: "Yêu cầu quyền truy cập thư viện ảnh bị từ chối." });
+                return;
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+                setRegFile({
+                    uri: asset.uri,
+                    name: asset.fileName || 'gallery.jpg',
+                    type: 'image/jpeg'
+                });
+                setRegMethod("gallery");
+                setRegStatus({ success: null, message: "" });
+            }
+        } catch (err) {
+            console.error("Pick image error:", err);
+            setRegStatus({ success: false, message: "Không thể mở thư viện ảnh." });
+        }
+    };
+
     const handleRegisterSubmit = async () => {
         if (!regName) {
             setRegStatus({ success: false, message: "Vui lòng nhập tên." });
@@ -298,16 +365,20 @@ export const DashboardScreen = () => {
         }
         setIsRegistering(true);
         setRegStatus({ success: null, message: "" });
-        
-        // Mock image file if none is chosen
-        const fileToUpload = regFile || {
-            uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80',
-            name: 'default_operator.jpg',
-            type: 'image/jpeg'
-        };
 
         try {
-            const res = await api.registerFace(regName, regRole, fileToUpload);
+            let res;
+            if (regMethod === 'cctv') {
+                res = await api.registerCameraFace(regName, regRole);
+            } else {
+                if (!regFile) {
+                    setRegStatus({ success: false, message: "Vui lòng chụp ảnh hoặc chọn ảnh từ thư viện." });
+                    setIsRegistering(false);
+                    return;
+                }
+                res = await api.registerFace(regName, regRole, regFile);
+            }
+
             if (res && res.success) {
                 setRegStatus({ success: true, message: "Đăng ký gương mặt thành công!" });
                 setRegName("");
@@ -666,154 +737,76 @@ export const DashboardScreen = () => {
                         })}
                     </View>
 
-                    {/* READ-ONLY MODE TELEMETRY INDICATOR */}
-                    <View style={{
-                        backgroundColor: 'rgba(255, 94, 54, 0.05)',
-                        borderWidth: 1,
-                        borderColor: 'rgba(255, 94, 54, 0.2)',
-                        borderRadius: 6,
-                        padding: 12,
-                        marginBottom: 16,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 10
-                    }}>
-                        <View style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 3,
-                            backgroundColor: colors.accentCyan,
-                        }} />
-                        <View style={{ flex: 1 }}>
-                            <Text style={{
-                                fontSize: 10,
-                                fontWeight: 'bold',
-                                color: colors.textPrimary,
-                                fontFamily: 'monospace',
-                                letterSpacing: 0.5
-                            }}>
-                                READ-ONLY TELEMETRY CONSOLE
-                            </Text>
-                            <Text style={{
-                                fontSize: 8,
-                                color: colors.textMuted,
-                                fontFamily: 'monospace',
-                                marginTop: 2
-                            }}>
-                                Camera controls and patrols are locked on mobile to prevent rotation interference.
-                            </Text>
-                        </View>
-                    </View>
-
-                    {/* ZONE STATUS MONITOR */}
+                     {/* ZONE STATUS MONITOR */}
                     <View style={styles.zonesMonitorCard}>
                         <Text style={styles.sectionTitle}>ZONE SECURITY MONITOR</Text>
                         
-                        {/* Zone 1 */}
-                        <View style={[styles.zoneCard, isAlerting && styles.zoneCardAlert]}>
-                            <View style={styles.zoneHeader}>
-                                <View>
-                                    <Text style={styles.zoneName}>Zone 01: Warehouse North</Text>
-                                    <Text style={styles.zoneDesc}>Main Storage Sector</Text>
-                                </View>
-                                <View style={[styles.zoneBadge, isAlerting ? styles.zoneBadgeAlert : styles.zoneBadgeSafe]}>
-                                    <Text style={styles.zoneBadgeText}>{isAlerting ? "ALARM" : "SAFE"}</Text>
-                                </View>
-                            </View>
+                        {[
+                            { id: 1, name: "Zone 01: Warehouse North", desc: "Main Storage Sector", defaultTemp: 38.5, defaultGas: 10 },
+                            { id: 2, name: "Zone 02: Loading Dock", desc: "Cargo Bays A-F", defaultTemp: 29.4, defaultGas: 12 },
+                            { id: 3, name: "Zone 03: Server Room", desc: "IT Infrastructure Node", defaultTemp: 21.8, defaultGas: 15 },
+                            { id: 4, name: "Zone 04: Office Suite", desc: "Administrative Wing", defaultTemp: 24.6, defaultGas: 8 },
+                        ].map((zone) => {
+                            const zData = zones[zone.id] || {};
+                            const temp = zData.temperature !== undefined ? zData.temperature : zone.defaultTemp;
+                            const gas = zData.gas !== undefined ? zData.gas : zone.defaultGas;
+                            const isPumpOn = zData.pump === "ON";
                             
-                            <View style={styles.zoneTelemetryRow}>
-                                <View style={styles.zoneTelemetryPill}>
-                                    <Text style={styles.zonePillLabel}>FLAME LEVEL</Text>
-                                    <Text style={styles.zonePillValue}>{flameValue}%</Text>
-                                </View>
-                                <View style={styles.zoneTelemetryPill}>
-                                    <Text style={styles.zonePillLabel}>SMOKE VALUE</Text>
-                                    <Text style={styles.zonePillValue}>{smokeValue} ppm</Text>
-                                </View>
-                            </View>
+                            // Determine alert level for this specific zone
+                            const isAlert = isPumpOn || gas > 300 || temp >= 50 || (zone.id === 1 && isAlerting);
+                            
+                            return (
+                                <View 
+                                    key={zone.id} 
+                                    style={[
+                                        styles.zoneCard, 
+                                        isAlert ? styles.zoneCardAlert : styles.zoneCardNormal
+                                    ]}
+                                >
+                                    <View style={styles.zoneHeader}>
+                                        <View>
+                                            <Text style={styles.zoneName}>{zone.name}</Text>
+                                            <Text style={styles.zoneDesc}>{zone.desc}</Text>
+                                        </View>
+                                        <View style={[
+                                            styles.zoneBadge, 
+                                            isAlert ? styles.zoneBadgeAlert : styles.zoneBadgeSafe
+                                        ]}>
+                                            <Text style={styles.zoneBadgeText}>
+                                                {isAlert ? "ALERT" : "SAFE"}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    
+                                    <View style={styles.zoneTelemetryRow}>
+                                        <View style={styles.zoneTelemetryPill}>
+                                            <Text style={styles.zonePillLabel}>TEMPERATURE</Text>
+                                            <Text style={styles.zonePillValue}>{temp.toFixed(1)}°C</Text>
+                                        </View>
+                                        <View style={styles.zoneTelemetryPill}>
+                                            <Text style={styles.zonePillLabel}>GAS / SMOKE</Text>
+                                            <Text style={styles.zonePillValue}>{gas} ppm</Text>
+                                        </View>
+                                    </View>
 
-                            <Pressable 
-                                style={({ pressed }) => [
-                                    styles.btnSprinkler, 
-                                    sprinklerState === "ON" && styles.btnSprinklerActive,
-                                    { opacity: pressed ? 0.8 : 0.95 }
-                                ]}
-                                onPress={toggleSprinkler}
-                            >
-                                <Text style={styles.btnSprinklerText}>
-                                    {sprinklerState === "ON" ? "💧 PUMP MOTOR ACTIVE (SPRINKLER ON)" : "💤 PUMP MOTOR OFF (STANDBY)"}
-                                </Text>
-                            </Pressable>
-                        </View>
-
-                        {/* Zone 2 */}
-                        <View style={[styles.zoneCard, styles.zoneCardNormal]}>
-                            <View style={styles.zoneHeader}>
-                                <View>
-                                    <Text style={styles.zoneName}>Zone 02: Loading Dock</Text>
-                                    <Text style={styles.zoneDesc}>Cargo Bays A-F</Text>
+                                    <Pressable 
+                                        style={({ pressed }) => [
+                                            styles.btnSprinkler, 
+                                            isPumpOn && styles.btnSprinklerActive,
+                                            { opacity: pressed ? 0.8 : 0.95, marginTop: 8 }
+                                        ]}
+                                        onPress={() => toggleZoneSprinkler(zone.id)}
+                                    >
+                                        <Text style={styles.btnSprinklerText}>
+                                            {isPumpOn 
+                                                ? `💧 ZONE 0${zone.id} PUMP ACTIVE (ON)` 
+                                                : `💤 ZONE 0${zone.id} PUMP STANDBY (OFF)`
+                                            }
+                                        </Text>
+                                    </Pressable>
                                 </View>
-                                <View style={[styles.zoneBadge, styles.zoneBadgeSafe]}>
-                                    <Text style={styles.zoneBadgeText}>SAFE</Text>
-                                </View>
-                            </View>
-                            <View style={styles.zoneTelemetryRow}>
-                                <View style={styles.zoneTelemetryPill}>
-                                    <Text style={styles.zonePillLabel}>FLAME LEVEL</Text>
-                                    <Text style={styles.zonePillValue}>0%</Text>
-                                </View>
-                                <View style={styles.zoneTelemetryPill}>
-                                    <Text style={styles.zonePillLabel}>SMOKE VALUE</Text>
-                                    <Text style={styles.zonePillValue}>12 ppm</Text>
-                                </View>
-                            </View>
-                        </View>
-
-                        {/* Zone 3 */}
-                        <View style={[styles.zoneCard, styles.zoneCardNormal]}>
-                            <View style={styles.zoneHeader}>
-                                <View>
-                                    <Text style={styles.zoneName}>Zone 03: Server Room</Text>
-                                    <Text style={styles.zoneDesc}>IT Infrastructure Node</Text>
-                                </View>
-                                <View style={[styles.zoneBadge, styles.zoneBadgeSafe]}>
-                                    <Text style={styles.zoneBadgeText}>SAFE</Text>
-                                </View>
-                            </View>
-                            <View style={styles.zoneTelemetryRow}>
-                                <View style={styles.zoneTelemetryPill}>
-                                    <Text style={styles.zonePillLabel}>FLAME LEVEL</Text>
-                                    <Text style={styles.zonePillValue}>0%</Text>
-                                </View>
-                                <View style={styles.zoneTelemetryPill}>
-                                    <Text style={styles.zonePillLabel}>SMOKE VALUE</Text>
-                                    <Text style={styles.zonePillValue}>15 ppm</Text>
-                                </View>
-                            </View>
-                        </View>
-
-                        {/* Zone 4 */}
-                        <View style={[styles.zoneCard, styles.zoneCardNormal]}>
-                            <View style={styles.zoneHeader}>
-                                <View>
-                                    <Text style={styles.zoneName}>Zone 04: Office Suite</Text>
-                                    <Text style={styles.zoneDesc}>Administrative Wing</Text>
-                                </View>
-                                <View style={[styles.zoneBadge, styles.zoneBadgeSafe]}>
-                                    <Text style={styles.zoneBadgeText}>SAFE</Text>
-                                </View>
-                            </View>
-                            <View style={styles.zoneTelemetryRow}>
-                                <View style={styles.zoneTelemetryPill}>
-                                    <Text style={styles.zonePillLabel}>FLAME LEVEL</Text>
-                                    <Text style={styles.zonePillValue}>0%</Text>
-                                </View>
-                                <View style={styles.zoneTelemetryPill}>
-                                    <Text style={styles.zonePillLabel}>SMOKE VALUE</Text>
-                                    <Text style={styles.zonePillValue}>8 ppm</Text>
-                                </View>
-                            </View>
-                        </View>
+                            );
+                        })}
                     </View>
                 </ScrollView>
             )}
@@ -837,6 +830,205 @@ export const DashboardScreen = () => {
                         <Text style={styles.fieldLabel}>
                             Service Status: <Text style={{ color: faceWatchActive ? colors.accentGreen : colors.accentRed, fontWeight: 'bold' }}>{faceWatchActive ? 'RUNNING' : 'STOPPED'}</Text>
                         </Text>
+                    </View>
+
+                    {/* Register Face Form Card */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>REGISTER NEW PERSONNEL</Text>
+                        <Text style={styles.settingsDesc}>Add new authorized face to the database</Text>
+                        
+                        <View style={{ marginTop: 12, gap: 10 }}>
+                            {/* Input Name */}
+                            <View>
+                                <Text style={styles.fieldLabel}>FULL NAME</Text>
+                                <TextInput
+                                    style={[styles.ipInput, { flex: 0, width: '100%' }]}
+                                    value={regName}
+                                    onChangeText={setRegName}
+                                    placeholder="Enter employee or user name"
+                                    placeholderTextColor={colors.textMuted}
+                                />
+                            </View>
+
+                            {/* Input Role */}
+                            <View>
+                                <Text style={styles.fieldLabel}>ROLE / PERMISSION</Text>
+                                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                                    {['Operator', 'Security', 'Admin', 'Guest'].map((role) => (
+                                        <Pressable
+                                            key={role}
+                                            style={{
+                                                paddingHorizontal: 12,
+                                                paddingVertical: 6,
+                                                borderRadius: 4,
+                                                borderWidth: 1,
+                                                borderColor: regRole === role ? colors.accentCyan : colors.borderColor,
+                                                backgroundColor: regRole === role ? 'rgba(230, 28, 31, 0.1)' : 'transparent'
+                                            }}
+                                            onPress={() => setRegRole(role)}
+                                        >
+                                            <Text style={{
+                                                fontSize: 10,
+                                                fontWeight: 'bold',
+                                                color: regRole === role ? colors.accentCyan : colors.textSecondary,
+                                                fontFamily: 'monospace'
+                                            }}>{role.toUpperCase()}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Select Capture Method */}
+                            <View style={{ marginTop: 6 }}>
+                                <Text style={styles.fieldLabel}>CAPTURE METHOD</Text>
+                                <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                                    {[
+                                        { id: 'device_camera', label: 'PHONE CAM' },
+                                        { id: 'gallery', label: 'GALLERY' },
+                                        { id: 'cctv', label: 'CCTV SNAPSHOT' }
+                                    ].map((method) => (
+                                        <Pressable
+                                            key={method.id}
+                                            style={{
+                                                flex: 1,
+                                                paddingVertical: 8,
+                                                borderRadius: 4,
+                                                borderWidth: 1,
+                                                borderColor: regMethod === method.id ? colors.accentCyan : colors.borderColor,
+                                                backgroundColor: regMethod === method.id ? 'rgba(230, 28, 31, 0.1)' : 'transparent',
+                                                alignItems: 'center',
+                                            }}
+                                            onPress={() => {
+                                                setRegMethod(method.id);
+                                                if (method.id === 'cctv') {
+                                                    setRegFile(null); // Clear local file if CCTV is chosen
+                                                }
+                                            }}
+                                        >
+                                            <Text style={{
+                                                fontSize: 9,
+                                                fontWeight: 'bold',
+                                                color: regMethod === method.id ? colors.accentCyan : colors.textMuted,
+                                                fontFamily: 'monospace'
+                                            }}>{method.label}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Method Specific UI */}
+                            {regMethod === 'cctv' ? (
+                                <View style={{
+                                    padding: 10,
+                                    borderRadius: 4,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                                    borderWidth: 1,
+                                    borderColor: colors.borderColor,
+                                    alignItems: 'center',
+                                    marginVertical: 4
+                                }}>
+                                    <Text style={{ fontSize: 9, color: colors.accentCyan, fontWeight: 'bold', fontFamily: 'monospace', textAlign: 'center' }}>
+                                        📹 WILL CAPTURE IMAGE DIRECTLY FROM CCTV/DAHUA CAMERA SNAPSHOT
+                                    </Text>
+                                    <Text style={{ fontSize: 8, color: colors.textMuted, fontFamily: 'monospace', textAlign: 'center', marginTop: 2 }}>
+                                        Make sure the person is facing the security camera before submitting.
+                                    </Text>
+                                </View>
+                            ) : (
+                                <View style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 10,
+                                    padding: 10,
+                                    borderRadius: 4,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                                    borderWidth: 1,
+                                    borderColor: colors.borderColor,
+                                    marginVertical: 4
+                                }}>
+                                    {regFile ? (
+                                        <Image
+                                            source={{ uri: regFile.uri }}
+                                            style={{ width: 45, height: 45, borderRadius: 4, borderWidth: 1, borderColor: colors.accentCyan }}
+                                            resizeMode="cover"
+                                        />
+                                    ) : (
+                                        <View style={{
+                                            width: 45,
+                                            height: 45,
+                                            borderRadius: 4,
+                                            backgroundColor: '#f1f5f9',
+                                            borderWidth: 1,
+                                            borderColor: colors.borderColor,
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}>
+                                            <Text style={{ fontSize: 16 }}>👤</Text>
+                                        </View>
+                                    )}
+                                    <View style={{ flex: 1, gap: 4 }}>
+                                        <Text style={{ fontSize: 9, color: colors.textSecondary, fontFamily: 'monospace' }} numberOfLines={1}>
+                                            {regFile ? `File: ${regFile.name}` : 'No image captured yet'}
+                                        </Text>
+                                        <Pressable
+                                            style={{
+                                                alignSelf: 'flex-start',
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 5,
+                                                borderRadius: 3,
+                                                backgroundColor: colors.accentCyan,
+                                            }}
+                                            onPress={regMethod === 'device_camera' ? handleTakePhoto : handlePickImage}
+                                        >
+                                            <Text style={{ fontSize: 8, color: '#ffffff', fontWeight: '900', fontFamily: 'monospace' }}>
+                                                {regMethod === 'device_camera' ? '📸 LAUNCH CAMERA' : '🖼️ BROWSE GALLERY'}
+                                            </Text>
+                                        </Pressable>
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Status indicator */}
+                            {regStatus.message ? (
+                                <Text style={{
+                                    fontSize: 9,
+                                    color: regStatus.success ? colors.accentGreen : colors.accentRed,
+                                    fontWeight: 'bold',
+                                    fontFamily: 'monospace',
+                                    textAlign: 'center',
+                                    marginVertical: 2
+                                }}>
+                                    {regStatus.message.toUpperCase()}
+                                </Text>
+                            ) : null}
+
+                            {/* Submit Button */}
+                            <Pressable
+                                style={({ pressed }) => [
+                                    {
+                                        backgroundColor: isRegistering ? '#e2e8f0' : colors.accentCyan,
+                                        paddingVertical: 10,
+                                        borderRadius: 4,
+                                        alignItems: 'center',
+                                        marginTop: 4,
+                                        opacity: pressed ? 0.8 : 1
+                                    }
+                                ]}
+                                onPress={handleRegisterSubmit}
+                                disabled={isRegistering}
+                            >
+                                {isRegistering ? (
+                                    <ActivityIndicator size="small" color="#ffffff" />
+                                ) : (
+                                    <Text style={{
+                                        color: '#ffffff',
+                                        fontSize: 10,
+                                        fontWeight: 'bold',
+                                        fontFamily: 'monospace'
+                                    }}>SUBMIT REGISTER FACE</Text>
+                                )}
+                            </Pressable>
+                        </View>
                     </View>
 
                     {/* Face verification HUD */}
