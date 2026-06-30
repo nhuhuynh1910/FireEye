@@ -159,8 +159,8 @@ void loop() {
     int smokeVal = analogRead(SMOKE_PIN);
     int flameVal = analogRead(FLAME_PIN);
 
-    // Xác định ngưỡng phát hiện cháy/khói (Ví dụ ngưỡng giả định, bạn có thể điều chỉnh)
-    bool smokeDetected = (smokeVal > 1500); // Ngưỡng cảm biến khói MQ-2
+    // Xác định ngưỡng phát hiện cháy/khói
+    bool smokeDetected = (smokeVal > 800); // Ngưỡng cảm biến khói MQ-2
     bool flameDetected = (flameVal < 1000);  // Thường cảm biến lửa trả về mức thấp (LOW) khi có lửa
 
     // --- Tạo Payload JSON ---

@@ -3,7 +3,8 @@ from fastapi import APIRouter
 from services.db_service import (
     get_notifications,
     get_unread_notification_count,
-    mark_notification_as_read
+    mark_notification_as_read,
+    mark_all_notifications_as_read
 )
 
 router = APIRouter(
@@ -32,6 +33,17 @@ def unread_count():
     return {
         "success": True,
         "unread": total
+    }
+
+
+@router.post("/read-all")
+def mark_all_read():
+
+    mark_all_notifications_as_read()
+
+    return {
+        "success": True,
+        "message": "Đã đánh dấu đọc tất cả"
     }
 
 

@@ -11,7 +11,7 @@ from config.settings import (
     MQTT_USERNAME,
     MQTT_PASSWORD,
     ESP32_SENSOR_TOPIC_TO_ZONE,
-    GAS_THRESHOLD_LOW,
+    GAS_THRESHOLD,
     TEMP_THRESHOLD
 )
 
@@ -114,7 +114,7 @@ class MQTTService:
 
             temp = data.get("temperature", 0.0)
             humi = data.get("humidity", 0.0)
-            gas = data.get("gas", 1)  # Mặc định là 1 (an toàn) với logic ngược (Active Low)
+            gas = data.get("gas", 0)  # Mặc định là 0 (an toàn)
             pump = data.get("pump", "OFF")
             buzzer = data.get("buzzer", "OFF")
             mode = data.get("mode", "MANUAL")
@@ -139,7 +139,7 @@ class MQTTService:
                 elif is_gas:
                     alert_type = "gas_warning"
                     msg = f"Phát hiện khí gas tại khu vực {zone_id}"
-                    val = 0.0
+                    val = gas
                 else:
                     alert_type = "temp_warning"
                     msg = f"Nhiệt độ cao vượt ngưỡng ({temp}°C) tại khu vực {zone_id}"
@@ -258,8 +258,8 @@ class MQTTService:
     def is_gas_warning(self, gas):
         try:
             gas_value = float(gas)
-            # Logic ngược (Active Low) trên MQ2: 0 là có gas (cảnh báo), 1 là không gas (an toàn)
-            return gas_value == 0
+            # Khí gas nồng độ trên GAS_THRESHOLD là cảnh báo
+            return gas_value > GAS_THRESHOLD
         except Exception:
             return False
 

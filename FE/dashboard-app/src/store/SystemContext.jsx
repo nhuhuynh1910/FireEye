@@ -44,6 +44,7 @@ export const SystemProvider = ({ children }) => {
     // Notifications state
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [selectedEventId, setSelectedEventId] = useState(null);
 
     // Face watcher state
     const [faceWatchActive, setFaceWatchActive] = useState(false);
@@ -57,10 +58,10 @@ export const SystemProvider = ({ children }) => {
 
     // Zone sensor telemetries state (from ESP32 JSON data)
     const [zones, setZones] = useState({
-        1: { temperature: 0.0, humidity: 0.0, gas: 1, pump: "OFF", buzzer: "OFF", mode: "MANUAL" },
-        2: { temperature: 0.0, humidity: 0.0, gas: 1, pump: "OFF", buzzer: "OFF", mode: "MANUAL" },
-        3: { temperature: 0.0, humidity: 0.0, gas: 1, pump: "OFF", buzzer: "OFF", mode: "MANUAL" },
-        4: { temperature: 0.0, humidity: 0.0, gas: 1, pump: "OFF", buzzer: "OFF", mode: "MANUAL" }
+        1: { temperature: 0.0, humidity: 0.0, gas: 0, pump: "OFF", buzzer: "OFF", mode: "MANUAL" },
+        2: { temperature: 0.0, humidity: 0.0, gas: 0, pump: "OFF", buzzer: "OFF", mode: "MANUAL" },
+        3: { temperature: 0.0, humidity: 0.0, gas: 0, pump: "OFF", buzzer: "OFF", mode: "MANUAL" },
+        4: { temperature: 0.0, humidity: 0.0, gas: 0, pump: "OFF", buzzer: "OFF", mode: "MANUAL" }
     });
 
     // Fetch notifications
@@ -88,6 +89,18 @@ export const SystemProvider = ({ children }) => {
             }
         } catch (err) {
             console.error(`Failed to mark notification ${eventId} as read:`, err);
+        }
+    }, [fetchNotifications]);
+
+    // Mark all notifications as read
+    const markAllAsRead = useCallback(async () => {
+        try {
+            const res = await api.markAllNotificationsAsRead();
+            if (res && res.success) {
+                fetchNotifications();
+            }
+        } catch (err) {
+            console.error("Failed to mark all notifications as read:", err);
         }
     }, [fetchNotifications]);
 
@@ -641,6 +654,9 @@ export const SystemProvider = ({ children }) => {
             unreadCount,
             fetchNotifications,
             markAsRead,
+            markAllAsRead,
+            selectedEventId,
+            setSelectedEventId,
             faceWatchActive,
             toggleFaceWatch,
             mqttConnected,

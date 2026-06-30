@@ -1,6 +1,26 @@
 /* store/SystemContext.jsx */
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Vibration } from 'react-native';
 import { api } from '../services/api';
+
+let Notifications = null;
+try {
+    // Under Expo Go SDK 53+, importing expo-notifications crashes at module-level on Android.
+    // We dynamically require it so it doesn't crash the Expo Go app.
+    Notifications = require('expo-notifications');
+    Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldVibrate: true,
+        }),
+    });
+} catch (err) {
+    console.warn("expo-notifications is not supported in this Expo Go client environment.", err);
+}
+
+const STORAGE_KEY_IP = '@fireeye_backend_ip';
 
 const SystemContext = createContext(null);
 
@@ -9,8 +29,38 @@ export const SystemProvider = ({ children }) => {
     const [activeCameraId, setActiveCameraId] = useState(1);
     const [isBackendConnected, setIsBackendConnected] = useState(false);
     
-    // Dynamic IP Config
-    const [raspberryPiIp, setRaspberryPiIp] = useState(process.env.EXPO_PUBLIC_BACKEND_IP || "192.168.100.174");
+    // Dynamic IP Config - default from env, overridden by AsyncStorage
+    const [raspberryPiIp, setRaspberryPiIpState] = useState(process.env.EXPO_PUBLIC_BACKEND_IP || "192.168.100.174");
+    const [ipLoaded, setIpLoaded] = useState(false);
+
+    // Load saved IP from device storage on app startup
+    useEffect(() => {
+        const loadSavedIp = async () => {
+            try {
+                const savedIp = await AsyncStorage.getItem(STORAGE_KEY_IP);
+                if (savedIp) {
+                    setRaspberryPiIpState(savedIp);
+                    api.setIp(savedIp);
+                }
+            } catch (err) {
+                console.error("Failed to load saved IP:", err);
+            } finally {
+                setIpLoaded(true);
+            }
+        };
+        loadSavedIp();
+    }, []);
+
+    // Wrapper to save IP to device storage when user changes it
+    const setRaspberryPiIp = useCallback(async (newIp) => {
+        setRaspberryPiIpState(newIp);
+        api.setIp(newIp);
+        try {
+            await AsyncStorage.setItem(STORAGE_KEY_IP, newIp);
+        } catch (err) {
+            console.error("Failed to save IP to storage:", err);
+        }
+    }, []);
 
     // Sync base URL dynamically when IP changes
     useEffect(() => {
@@ -58,12 +108,72 @@ export const SystemProvider = ({ children }) => {
     // MQTT connection state
     const [mqttConnected, setMqttConnected] = useState(false);
 
+    // Toast / Snackbar state
+    const [activeToast, setActiveToast] = useState(null);
+
+    // Request notification permissions on startup
+    useEffect(() => {
+        const requestPermissions = async () => {
+            if (!Notifications) return;
+            try {
+                const { status } = await Notifications.getPermissionsAsync();
+                if (status !== 'granted') {
+                    await Notifications.requestPermissionsAsync();
+                }
+            } catch (err) {
+                console.error("Failed to request notification permissions:", err);
+            }
+        };
+        requestPermissions();
+    }, []);
+
+    // Ref to prevent alerting historical notifications on app load, only notify on new ones
+    const lastNotifiedIdRef = React.useRef(null);
+
     // Fetch notifications
     const fetchNotifications = useCallback(async () => {
         try {
             const res = await api.getNotifications();
             if (res && res.success) {
                 setNotifications(res.data);
+                
+                // Real-time alerting logic
+                const unreadItems = res.data.filter(item => !item.is_read);
+                if (unreadItems.length > 0) {
+                    // Find the newest unread item by max ID
+                    const newestUnread = unreadItems.reduce((max, item) => item.id > max.id ? item : max, unreadItems[0]);
+                    
+                    if (lastNotifiedIdRef.current !== null) {
+                        if (newestUnread.id > lastNotifiedIdRef.current) {
+                            // 1. System Push Notification (Local)
+                            if (Notifications) {
+                                Notifications.scheduleNotificationAsync({
+                                    content: {
+                                        title: `🚨 FIREEYE ALERT: ${newestUnread.risk_level}`,
+                                        body: newestUnread.message,
+                                        data: { eventId: newestUnread.event_id || newestUnread.id },
+                                    },
+                                    trigger: null, // immediate
+                                }).catch(err => console.error("Failed to schedule push notification:", err));
+                            }
+
+                            // 2. Trigger In-app Toast/Snackbar
+                            setActiveToast({
+                                id: newestUnread.id,
+                                message: newestUnread.message,
+                                riskLevel: newestUnread.risk_level
+                            });
+
+                            // 3. Vibration
+                            Vibration.vibrate([0, 500, 200, 500]); // Pattern: [start delay, vibrate, pause, vibrate]
+                        }
+                    }
+                    lastNotifiedIdRef.current = newestUnread.id;
+                } else {
+                    // If all read, set threshold to max ID to avoid spam on next unread
+                    const maxId = res.data.reduce((max, item) => item.id > max ? item.id : max, 0);
+                    lastNotifiedIdRef.current = maxId;
+                }
             }
             const countRes = await api.getUnreadNotificationCount();
             if (countRes && countRes.success) {
@@ -399,7 +509,9 @@ export const SystemProvider = ({ children }) => {
             faceWatchActive,
             toggleFaceWatch,
             mqttConnected,
-            fetchMQTTStatus
+            fetchMQTTStatus,
+            activeToast,
+            setActiveToast
         }}>
             {children}
         </SystemContext.Provider>

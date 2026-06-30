@@ -363,6 +363,22 @@ def mark_notification_as_read(event_id: int):
     return True
 
 
+def mark_all_notifications_as_read():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE events
+        SET is_read = 1
+        WHERE is_read = 0
+    """)
+
+    conn.commit()
+    conn.close()
+
+    return True
+
+
 def cleanup_old_events(days: int = 7):
     conn = get_connection()
     cursor = conn.cursor()

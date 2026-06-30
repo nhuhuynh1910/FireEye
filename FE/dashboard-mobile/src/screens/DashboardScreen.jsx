@@ -11,15 +11,85 @@ import {
     Modal, 
     Animated, 
     ActivityIndicator,
-    Dimensions
+    Dimensions,
+    Platform
 } from 'react-native';
 import { useSystem } from '../store/SystemContext';
 import { formatTimestamp } from '../utils/helpers';
 import { colors } from '../theme/colors';
 import { api } from '../services/api';
+import { WebView } from 'react-native-webview';
 import logoImg from '../../assets/logo.jpg';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const ToastSnackbar = ({ toast, onDismiss }) => {
+    const slideAnim = React.useRef(new Animated.Value(-100)).current;
+
+    React.useEffect(() => {
+        // Slide down
+        Animated.timing(slideAnim, {
+            toValue: Platform.OS === 'ios' ? 50 : 20, // Slide down
+            duration: 450,
+            useNativeDriver: true,
+        }).start();
+
+        // Auto dismiss after 4.5 seconds
+        const timer = setTimeout(() => {
+            Animated.timing(slideAnim, {
+                toValue: -150, // Slide back up
+                duration: 400,
+                useNativeDriver: true,
+            }).start(() => {
+                onDismiss();
+            });
+        }, 4500);
+
+        return () => clearTimeout(timer);
+    }, [toast]);
+
+    const getBgColor = () => {
+        const lvl = toast.riskLevel?.toUpperCase();
+        if (lvl === 'CRITICAL' || lvl === 'EMERGENCY' || lvl === 'HIGH') return '#2f0f0f';
+        if (lvl === 'WARNING' || lvl === 'MEDIUM') return '#2d1e05';
+        return '#081e24'; // INFO or default
+    };
+
+    const getBorderColor = () => {
+        const lvl = toast.riskLevel?.toUpperCase();
+        if (lvl === 'CRITICAL' || lvl === 'EMERGENCY' || lvl === 'HIGH') return '#ef4444';
+        if (lvl === 'WARNING' || lvl === 'MEDIUM') return '#f59e0b';
+        return '#06b6d4';
+    };
+
+    return (
+        <Animated.View 
+            style={[
+                styles.toastContainer, 
+                { 
+                    transform: [{ translateY: slideAnim }],
+                    backgroundColor: getBgColor(),
+                    borderColor: getBorderColor()
+                }
+            ]}
+        >
+            <View style={styles.toastIconWrapper}>
+                <Text style={styles.toastIcon}>🚨</Text>
+            </View>
+            <View style={styles.toastTextWrapper}>
+                <Text style={styles.toastTitle}>
+                    FIREEYE ALERT ({toast.riskLevel})
+                </Text>
+                <Text style={styles.toastBody} numberOfLines={2}>
+                    {toast.message}
+                </Text>
+            </View>
+            <Pressable style={styles.toastCloseBtn} onPress={onDismiss}>
+                <Text style={styles.toastCloseText}>✕</Text>
+            </Pressable>
+        </Animated.View>
+    );
+};
 
 export const DashboardScreen = () => {
     const {
@@ -57,7 +127,9 @@ export const DashboardScreen = () => {
         markAsRead,
         faceWatchActive,
         toggleFaceWatch,
-        mqttConnected
+        mqttConnected,
+        activeToast,
+        setActiveToast
     } = useSystem();
 
     // Local state variables
@@ -148,11 +220,48 @@ export const DashboardScreen = () => {
             if (res.status === "success") {
                 setEventLogs(res.data);
                 setCurrentPage(1);
+                return res.data;
             }
         } catch (err) {
             console.error("Failed to load events in mobile:", err);
         } finally {
             if (!silent) setIsRefreshingEvents(false);
+        }
+        return [];
+    };
+
+    // Handle notification click → navigate to event detail in Events tab
+    const handleNotificationClick = async (notification) => {
+        // 1. Close notification popup
+        setShowNotifications(false);
+
+        // 2. Mark as read
+        if (!notification.is_read) {
+            markAsRead(notification.id);
+        }
+
+        // 3. Switch to events tab
+        setActiveTab('events');
+
+        // 4. Load events and find matching event
+        const loadedEvents = await loadEventLogs(true);
+        const eventIndex = loadedEvents.findIndex(e => e.id === notification.event_id);
+
+        if (eventIndex !== -1) {
+            // 5. Calculate correct page and set it
+            const targetPage = Math.floor(eventIndex / itemsPerPage) + 1;
+            setCurrentPage(targetPage);
+
+            // 6. Open event detail modal
+            setSelectedEvent(loadedEvents[eventIndex]);
+        } else {
+            // Fallback: try to find by notification ID itself
+            const fallbackEvent = loadedEvents.find(e => e.id === notification.id);
+            if (fallbackEvent) {
+                const targetPage = Math.floor(loadedEvents.indexOf(fallbackEvent) / itemsPerPage) + 1;
+                setCurrentPage(targetPage);
+                setSelectedEvent(fallbackEvent);
+            }
         }
     };
 
@@ -399,20 +508,6 @@ export const DashboardScreen = () => {
                 </View>
             </View>
 
-            {/* TAB SELECTOR */}
-            <View style={styles.tabBar}>
-                {['dashboard', 'faces', 'events', 'settings'].map(tab => (
-                    <Pressable
-                        key={tab}
-                        style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-                        onPress={() => setActiveTab(tab)}
-                    >
-                        <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                            {tab === 'faces' ? 'FACE DB' : tab.toUpperCase()}
-                        </Text>
-                    </Pressable>
-                ))}
-            </View>
 
             {/* MAIN RENDER WINDOW */}
             {activeTab === 'dashboard' && (
@@ -447,19 +542,39 @@ export const DashboardScreen = () => {
                         <View style={styles.videoStage}>
                             {showLive ? (
                                 <View style={styles.liveStreamWrapper}>
-                                    <Image
-                                        source={{ uri: `${api.getStreamUrl()}?t=${Date.now()}` }}
-                                        style={[
-                                            styles.streamFeedImage,
-                                            {
-                                                transform: [
-                                                    { rotate: `${rotation}deg` },
-                                                    { scale: (rotation === 90 || rotation === 270) ? 0.5625 : 1 }
-                                                ]
-                                            }
-                                        ]}
-                                        resizeMode="contain"
-                                    />
+                                    {Platform.OS === 'android' ? (
+                                        <WebView
+                                            source={{ uri: api.getStreamUrl() }}
+                                            style={[
+                                                styles.streamFeedImage,
+                                                {
+                                                    transform: [
+                                                        { rotate: `${rotation}deg` },
+                                                        { scale: (rotation === 90 || rotation === 270) ? 0.5625 : 1 }
+                                                    ]
+                                                }
+                                            ]}
+                                            javaScriptEnabled={false}
+                                            scalesPageToFit={true}
+                                            scrollEnabled={false}
+                                            bounces={false}
+                                            overScrollMode="never"
+                                        />
+                                    ) : (
+                                        <Image
+                                            source={{ uri: `${api.getStreamUrl()}?t=${Date.now()}` }}
+                                            style={[
+                                                styles.streamFeedImage,
+                                                {
+                                                    transform: [
+                                                        { rotate: `${rotation}deg` },
+                                                        { scale: (rotation === 90 || rotation === 270) ? 0.5625 : 1 }
+                                                    ]
+                                                }
+                                            ]}
+                                            resizeMode="contain"
+                                        />
+                                    )}
                                     <Pressable 
                                         style={styles.hudRotateBtn}
                                         onPress={handleRotate}
@@ -533,7 +648,7 @@ export const DashboardScreen = () => {
 
                     {/* CAMERA SELECT PANEL (Horizontal Scroll) */}
                     <View style={styles.cameraRoster}>
-                        {['Front Gate', 'Parking Lot', 'Lobby', 'Back Door'].map((name, idx) => {
+                        {['Dahua IP Camera'].map((name, idx) => {
                             const cid = idx + 1;
                             const isAct = activeCameraId === cid;
                             return (
@@ -617,17 +732,18 @@ export const DashboardScreen = () => {
                                 </View>
                             </View>
 
-                            <View 
-                                style={[
+                            <Pressable 
+                                style={({ pressed }) => [
                                     styles.btnSprinkler, 
                                     sprinklerState === "ON" && styles.btnSprinklerActive,
-                                    { opacity: 0.95 }
+                                    { opacity: pressed ? 0.8 : 0.95 }
                                 ]}
+                                onPress={toggleSprinkler}
                             >
                                 <Text style={styles.btnSprinklerText}>
                                     {sprinklerState === "ON" ? "💧 PUMP MOTOR ACTIVE (SPRINKLER ON)" : "💤 PUMP MOTOR OFF (STANDBY)"}
                                 </Text>
-                            </View>
+                            </Pressable>
                         </View>
 
                         {/* Zone 2 */}
@@ -657,7 +773,30 @@ export const DashboardScreen = () => {
                         <View style={[styles.zoneCard, styles.zoneCardNormal]}>
                             <View style={styles.zoneHeader}>
                                 <View>
-                                    <Text style={styles.zoneName}>Zone 03: Office Suite</Text>
+                                    <Text style={styles.zoneName}>Zone 03: Server Room</Text>
+                                    <Text style={styles.zoneDesc}>IT Infrastructure Node</Text>
+                                </View>
+                                <View style={[styles.zoneBadge, styles.zoneBadgeSafe]}>
+                                    <Text style={styles.zoneBadgeText}>SAFE</Text>
+                                </View>
+                            </View>
+                            <View style={styles.zoneTelemetryRow}>
+                                <View style={styles.zoneTelemetryPill}>
+                                    <Text style={styles.zonePillLabel}>FLAME LEVEL</Text>
+                                    <Text style={styles.zonePillValue}>0%</Text>
+                                </View>
+                                <View style={styles.zoneTelemetryPill}>
+                                    <Text style={styles.zonePillLabel}>SMOKE VALUE</Text>
+                                    <Text style={styles.zonePillValue}>15 ppm</Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* Zone 4 */}
+                        <View style={[styles.zoneCard, styles.zoneCardNormal]}>
+                            <View style={styles.zoneHeader}>
+                                <View>
+                                    <Text style={styles.zoneName}>Zone 04: Office Suite</Text>
                                     <Text style={styles.zoneDesc}>Administrative Wing</Text>
                                 </View>
                                 <View style={[styles.zoneBadge, styles.zoneBadgeSafe]}>
@@ -1204,6 +1343,21 @@ export const DashboardScreen = () => {
                 </ScrollView>
             )}
 
+            {/* TAB SELECTOR AT THE BOTTOM */}
+            <View style={styles.tabBar}>
+                {['dashboard', 'faces', 'events', 'settings'].map(tab => (
+                    <Pressable
+                        key={tab}
+                        style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
+                        onPress={() => setActiveTab(tab)}
+                    >
+                        <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                            {tab === 'faces' ? 'FACE DB' : tab.toUpperCase()}
+                        </Text>
+                    </Pressable>
+                ))}
+            </View>
+
             {/* NOTIFICATIONS DROPDOWN MODAL */}
             <Modal
                 visible={showNotifications}
@@ -1229,12 +1383,13 @@ export const DashboardScreen = () => {
                                 </Text>
                             ) : (
                                 notifications.map((item) => (
-                                    <View 
+                                    <Pressable 
                                         key={item.id} 
                                         style={[
                                             styles.notificationCard, 
                                             item.is_read ? styles.notifRead : styles.notifUnread
                                         ]}
+                                        onPress={() => handleNotificationClick(item)}
                                     >
                                         <View style={styles.notifTop}>
                                             <Text style={styles.notifTime}>
@@ -1247,12 +1402,15 @@ export const DashboardScreen = () => {
                                         {!item.is_read && (
                                             <Pressable 
                                                 style={styles.notifReadBtn}
-                                                onPress={() => markAsRead(item.id)}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    markAsRead(item.id);
+                                                }}
                                             >
                                                 <Text style={styles.notifReadBtnText}>Mark as Read</Text>
                                             </Pressable>
                                         )}
-                                    </View>
+                                    </Pressable>
                                 ))
                             )}
                         </ScrollView>
@@ -1328,6 +1486,14 @@ export const DashboardScreen = () => {
                     )}
                 </Pressable>
             </Modal>
+
+            {/* TOAST SNACKBAR */}
+            {activeToast && (
+                <ToastSnackbar 
+                    toast={activeToast} 
+                    onDismiss={() => setActiveToast(null)} 
+                />
+            )}
         </View>
     );
 };
@@ -1339,9 +1505,9 @@ const styles = StyleSheet.create({
     },
     navbar: {
         height: 60,
-        backgroundColor: colors.bgPanel,
+        backgroundColor: colors.accentCyan,
         borderBottomWidth: 1.5,
-        borderBottomColor: colors.borderColor,
+        borderBottomColor: colors.accentRed,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -1360,14 +1526,14 @@ const styles = StyleSheet.create({
     brandTitle: {
         fontSize: 13,
         fontWeight: '900',
-        color: colors.textPrimary,
+        color: '#ffffff',
         fontFamily: 'monospace',
         letterSpacing: 1,
     },
     brandSubtitle: {
         fontSize: 8,
         fontWeight: '700',
-        color: colors.accentCyan,
+        color: 'rgba(255, 255, 255, 0.8)',
         fontFamily: 'monospace',
         letterSpacing: 1.5,
         marginTop: 1,
@@ -1389,7 +1555,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: -2,
         right: -2,
-        backgroundColor: colors.accentRed,
+        backgroundColor: colors.accentOrange,
         borderRadius: 6,
         width: 13,
         height: 13,
@@ -1404,12 +1570,12 @@ const styles = StyleSheet.create({
     sysTelemetryPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.bgDeep,
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: colors.borderColor,
+        borderColor: 'rgba(255, 255, 255, 0.25)',
         gap: 4,
     },
     dot: {
@@ -1429,11 +1595,11 @@ const styles = StyleSheet.create({
     statusText: {
         fontSize: 8,
         fontWeight: '800',
-        color: colors.textSecondary,
+        color: '#ffffff',
         fontFamily: 'monospace',
     },
     btnEmergency: {
-        backgroundColor: colors.accentRed,
+        backgroundColor: colors.accentOrange,
         paddingHorizontal: 10,
         paddingVertical: 5,
         borderRadius: 4,
@@ -1449,8 +1615,8 @@ const styles = StyleSheet.create({
     tabBar: {
         flexDirection: 'row',
         backgroundColor: colors.bgPanel,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.borderColor,
+        borderTopWidth: 1,
+        borderTopColor: colors.borderColor,
         paddingVertical: 8,
         paddingHorizontal: 8,
     },
@@ -2574,5 +2740,56 @@ const styles = StyleSheet.create({
         fontSize: 10,
         color: colors.textSecondary,
         fontFamily: 'monospace',
+    },
+    toastContainer: {
+        position: 'absolute',
+        top: 20,
+        left: 12,
+        right: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 8,
+        borderWidth: 1.5,
+        zIndex: 99999,
+        elevation: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 6,
+    },
+    toastIconWrapper: {
+        marginRight: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    toastIcon: {
+        fontSize: 22,
+    },
+    toastTextWrapper: {
+        flex: 1,
+    },
+    toastTitle: {
+        fontSize: 11,
+        fontWeight: 'bold',
+        color: '#ffffff',
+        fontFamily: 'monospace',
+        letterSpacing: 0.5,
+    },
+    toastBody: {
+        fontSize: 10,
+        color: 'rgba(255, 255, 255, 0.9)',
+        fontFamily: 'monospace',
+        marginTop: 2,
+    },
+    toastCloseBtn: {
+        padding: 6,
+        marginLeft: 8,
+        alignSelf: 'center',
+    },
+    toastCloseText: {
+        fontSize: 14,
+        color: 'rgba(255, 255, 255, 0.5)',
+        fontWeight: 'bold',
     },
 });

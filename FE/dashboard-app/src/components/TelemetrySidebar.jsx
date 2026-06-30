@@ -114,7 +114,7 @@ export const TelemetrySidebar = () => {
 
                 <div className="zone-cards-stack">
                     {[1, 2, 3, 4].map(zoneId => {
-                        const zoneData = zones[zoneId] || { temperature: 0.0, humidity: 0.0, gas: 1, pump: "OFF", buzzer: "OFF", mode: "MANUAL", online: false };
+                        const zoneData = zones[zoneId] || { temperature: 0.0, humidity: 0.0, gas: 0, pump: "OFF", buzzer: "OFF", mode: "MANUAL", online: false };
                         const zoneMeta = {
                             1: { name: "Zone 01: Warehouse North", desc: "Main Storage Sector" },
                             2: { name: "Zone 02: Loading Dock", desc: "Cargo Bays A-F" },
@@ -123,7 +123,7 @@ export const TelemetrySidebar = () => {
                         }[zoneId];
 
                         const isOnline = zoneData.online !== false;
-                        const isAlerting = isOnline && (Number(zoneData.gas) === 0 || (zoneId === 1 && isZone1Alerting));
+                        const isAlerting = isOnline && (Number(zoneData.gas) > 800 || (zoneId === 1 && isZone1Alerting));
 
                         let cardClass = 'safe-state';
                         let statusText = 'SAFE';

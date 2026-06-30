@@ -30,7 +30,7 @@ router = APIRouter(
 )
 
 # Cấu hình ngưỡng khẩn cấp (Emergency threshold)
-GAS_CRITICAL_VALUE = 0  # Với MQ2 Active Low: 0 = Có khói/gas dày đặc (cảnh báo)
+GAS_CRITICAL_THRESHOLD = 800  # Ngưỡng cảnh báo khí gas MQ-2
 TEMP_CRITICAL_THRESHOLD = 50.0  # Độ C
 
 # Thiết lập bộ nhớ đệm In-Memory lưu trữ các phiên biểu quyết
@@ -230,11 +230,11 @@ async def safety_control_api(req: ControlRequest, current_user: dict = Depends(g
 
     try:
         raw_gas = zone_info.get("gas")
-        gas = int(raw_gas) if raw_gas is not None else 1
+        gas = int(raw_gas) if raw_gas is not None else 0
     except (TypeError, ValueError):
-        gas = 1
+        gas = 0
     
-    if is_sensor_danger or is_ai_danger or temp >= TEMP_CRITICAL_THRESHOLD or gas == GAS_CRITICAL_VALUE:
+    if is_sensor_danger or is_ai_danger or temp >= TEMP_CRITICAL_THRESHOLD or gas >= GAS_CRITICAL_THRESHOLD:
         is_emergency = True
         
     if is_emergency:

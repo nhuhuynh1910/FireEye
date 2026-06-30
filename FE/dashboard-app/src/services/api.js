@@ -325,6 +325,15 @@ export const api = {
         });
     },
 
+    /**
+     * Mark all notifications as read
+     */
+    async markAllNotificationsAsRead() {
+        return request(`${API_BASE_URL}/api/notifications/read-all`, {
+            method: "POST"
+        });
+    },
+
     // --- Authentication & User Management APIs ---
 
     async login(phone_number, secret_key, system_secret_key, device_name = "Web Dashboard") {

@@ -3,11 +3,24 @@ import { API_BASE_URL } from '../services/api';
 import { useSystem } from '../store/SystemContext';
 
 export const EventLogs = () => {
-    const { events, fetchEvents } = useSystem();
+    const { events, fetchEvents, selectedEventId, setSelectedEventId } = useSystem();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
+
+    useEffect(() => {
+        if (selectedEventId !== null && events.length > 0) {
+            const index = events.findIndex(e => e.id === selectedEventId);
+            if (index !== -1) {
+                const event = events[index];
+                const page = Math.floor(index / itemsPerPage) + 1;
+                setCurrentPage(page);
+                setSelectedEvent(event);
+                setSelectedEventId(null);
+            }
+        }
+    }, [selectedEventId, events, setSelectedEventId, itemsPerPage]);
 
     useEffect(() => {
         setCurrentPage(1);

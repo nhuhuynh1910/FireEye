@@ -107,6 +107,7 @@ def home():
 
             "/api/notifications",
             "/api/notifications/unread-count",
+            "/api/notifications/read-all",
             "/api/notifications/{event_id}/read",
 
             "/api/faces/register",

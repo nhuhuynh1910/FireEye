@@ -123,28 +123,10 @@ export const Dashboard = () => {
                 {!isPTZVisible && !autoScanActive && (
                     <button 
                         onClick={() => setIsPTZVisible(true)} 
-                        className="btn-tech-action" 
-                        style={{ 
-                            position: 'absolute',
-                            bottom: '16px',
-                            right: '24px',
-                            zIndex: 20,
-                            padding: '8px 16px', 
-                            fontSize: '11px', 
-                            marginTop: 0, 
-                            boxShadow: '0 0 15px rgba(255, 94, 54, 0.4)',
-                            background: 'rgba(13, 15, 20, 0.85)',
-                            backdropFilter: 'blur(4px)',
-                            border: '1px solid var(--accent-cyan)',
-                            borderRadius: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            color: 'var(--text-primary)'
-                        }}
+                        className="btn-show-ptz-floating" 
                         title="Show PTZ camera controls panel"
                     >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '12px', height: '12px', color: 'var(--accent-cyan)' }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '12px', height: '12px' }}>
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                             <circle cx="12" cy="12" r="3"/>
                         </svg>
@@ -168,19 +150,7 @@ export const Dashboard = () => {
                         </h3>
                         <button 
                             onClick={() => setIsPTZVisible(false)} 
-                            className="btn-tech-action" 
-                            style={{ 
-                                padding: '6px 12px', 
-                                fontSize: '10px', 
-                                marginTop: 0, 
-                                border: '1px solid rgba(255, 94, 54, 0.3)', 
-                                background: 'rgba(255, 94, 54, 0.05)', 
-                                borderRadius: '4px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                color: 'var(--accent-cyan)'
-                            }}
+                            className="btn-hide-ptz" 
                             title="Hide PTZ Controls"
                         >
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '12px', height: '12px' }}>

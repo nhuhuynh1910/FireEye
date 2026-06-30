@@ -150,7 +150,9 @@ export const AdminCameraConfig = () => {
                                     onMouseUp={() => handlePTZStop('up')}
                                     onMouseLeave={() => handlePTZStop('up')}
                                 >
-                                    ▲
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <polyline points="18 15 12 9 6 15"/>
+                                    </svg>
                                 </button>
 
                                 {/* Left */}
@@ -161,7 +163,9 @@ export const AdminCameraConfig = () => {
                                     onMouseUp={() => handlePTZStop('left')}
                                     onMouseLeave={() => handlePTZStop('left')}
                                 >
-                                    ◀
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <polyline points="15 18 9 12 15 6"/>
+                                    </svg>
                                 </button>
 
                                 {/* Center Stop */}
@@ -170,7 +174,9 @@ export const AdminCameraConfig = () => {
                                     title="STOP MOVEMENT"
                                     onClick={handleHardStop}
                                 >
-                                    ■
+                                    <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '14px', height: '14px' }}>
+                                        <rect x="6" y="6" width="12" height="12" rx="1"/>
+                                    </svg>
                                 </button>
 
                                 {/* Right */}
@@ -181,7 +187,9 @@ export const AdminCameraConfig = () => {
                                     onMouseUp={() => handlePTZStop('right')}
                                     onMouseLeave={() => handlePTZStop('right')}
                                 >
-                                    ▶
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <polyline points="9 18 15 12 9 6"/>
+                                    </svg>
                                 </button>
 
                                 {/* Down */}
@@ -192,7 +200,9 @@ export const AdminCameraConfig = () => {
                                     onMouseUp={() => handlePTZStop('down')}
                                     onMouseLeave={() => handlePTZStop('down')}
                                 >
-                                    ▼
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <polyline points="6 9 12 15 18 9"/>
+                                    </svg>
                                 </button>
 
                                 {/* Zoom In */}
@@ -203,7 +213,10 @@ export const AdminCameraConfig = () => {
                                     onMouseUp={() => handlePTZStop('zoom-in')}
                                     onMouseLeave={() => handlePTZStop('zoom-in')}
                                 >
-                                    +
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <line x1="12" y1="5" x2="12" y2="19"/>
+                                        <line x1="5" y1="12" x2="19" y2="12"/>
+                                    </svg>
                                 </button>
 
                                 {/* Zoom Out */}
@@ -214,7 +227,9 @@ export const AdminCameraConfig = () => {
                                     onMouseUp={() => handlePTZStop('zoom-out')}
                                     onMouseLeave={() => handlePTZStop('zoom-out')}
                                 >
-                                    -
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <line x1="5" y1="12" x2="19" y2="12"/>
+                                    </svg>
                                 </button>
                             </div>
 
@@ -258,21 +273,21 @@ export const AdminCameraConfig = () => {
                                         display: 'flex', 
                                         flexDirection: 'column', 
                                         padding: '12px', 
-                                        background: isActiveZone ? 'rgba(6, 182, 212, 0.1)' : 'rgba(6, 10, 19, 0.4)', 
-                                        border: isActiveZone ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)', 
+                                        background: isActiveZone ? 'rgba(230, 28, 31, 0.04)' : '#f8fafc', 
+                                        border: isActiveZone ? '1.5px solid var(--accent-cyan)' : '1px solid var(--border-color)', 
                                         borderRadius: '6px', 
                                         opacity: isOnline ? 1 : 0.8,
-                                        boxShadow: isActiveZone ? '0 0 15px rgba(6, 182, 212, 0.2)' : 'none',
+                                        boxShadow: isActiveZone ? '0 4px 15px rgba(230, 28, 31, 0.08)' : 'none',
                                         transition: 'all 0.3s ease'
                                     }}
                                 >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                            <span style={{ fontSize: '12px', fontWeight: 'bold', color: isActiveZone ? '#ffffff' : 'var(--accent-cyan)' }}>
+                                            <span style={{ fontSize: '12px', fontWeight: 'bold', color: isActiveZone ? 'var(--accent-cyan)' : 'var(--text-primary)' }}>
                                                 {zoneName}
                                             </span>
                                             {isActiveZone && (
-                                                <span style={{ fontSize: '9px', color: 'var(--accent-cyan)', fontWeight: 'bold', letterSpacing: '0.5px', textShadow: '0 0 4px var(--accent-cyan)' }}>
+                                                <span style={{ fontSize: '9px', color: 'var(--accent-cyan)', fontWeight: 'bold', letterSpacing: '0.5px' }}>
                                                     [ CAMERA POINTING HERE ]
                                                 </span>
                                             )}

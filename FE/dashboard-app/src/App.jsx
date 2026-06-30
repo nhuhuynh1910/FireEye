@@ -9,7 +9,7 @@ import { ChangePassword } from './components/ChangePassword';
 import { AdminLayout } from './components/AdminLayout';
 import { SafetyVoteModal } from './components/SafetyVoteModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
-import logoImg from './assets/image-removebg-preview.jpg';
+import logoImg from './assets/logo.jpg';
 import './App.css';
 
 import { API_BASE_URL } from './services/api';
@@ -25,7 +25,9 @@ const MainLayout = ({ onOpenChangePassword }) => {
         notifications,
         unreadCount,
         markAsRead,
-        setViewMode
+        markAllAsRead,
+        setViewMode,
+        setSelectedEventId
     } = useSystem();
 
     const { user, logout } = useAuth();
@@ -96,9 +98,43 @@ const MainLayout = ({ onOpenChangePassword }) => {
 
                         {showNotifications && (
                             <div className="notifications-dropdown-menu">
-                                <div className="dropdown-header">
+                                <div className="dropdown-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span>THREAT DETECT LOGS</span>
-                                    <span className="unread-stat">{unreadCount} UNREAD</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span className="unread-stat">{unreadCount} UNREAD</span>
+                                        {unreadCount > 0 && (
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    markAllAsRead();
+                                                }}
+                                                style={{
+                                                    background: 'rgba(0, 240, 255, 0.1)',
+                                                    border: '1px solid var(--accent-cyan)',
+                                                    color: 'var(--accent-cyan)',
+                                                    fontSize: '9px',
+                                                    fontWeight: 'bold',
+                                                    cursor: 'pointer',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '3px',
+                                                    fontFamily: 'monospace',
+                                                    transition: 'all 0.2s ease',
+                                                    whiteSpace: 'nowrap'
+                                                }}
+                                                title="Mark all notifications as read"
+                                                onMouseOver={(e) => {
+                                                    e.target.style.background = 'var(--accent-cyan)';
+                                                    e.target.style.color = '#000';
+                                                }}
+                                                onMouseOut={(e) => {
+                                                    e.target.style.background = 'rgba(0, 240, 255, 0.1)';
+                                                    e.target.style.color = 'var(--accent-cyan)';
+                                                }}
+                                            >
+                                                MARK ALL READ
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="dropdown-items-list">
                                     {notifications.length === 0 ? (
@@ -110,6 +146,15 @@ const MainLayout = ({ onOpenChangePassword }) => {
                                             <div
                                                 key={n.id}
                                                 className={`dropdown-notification-card ${n.is_read ? 'read' : 'unread'} ${n.risk_level?.toLowerCase() || ''}`}
+                                                onClick={() => {
+                                                    if (!n.is_read) {
+                                                        markAsRead(n.id);
+                                                    }
+                                                    setSelectedEventId(n.id);
+                                                    setActiveTab('events');
+                                                    setShowNotifications(false);
+                                                }}
+                                                style={{ cursor: 'pointer' }}
                                             >
                                                 <div className="card-status-strip"></div>
                                                 <div className="card-main-content">
@@ -120,10 +165,7 @@ const MainLayout = ({ onOpenChangePassword }) => {
                                                     <div className="card-message">{n.message}</div>
 
                                                     {n.snapshot_path && (
-                                                        <div className="card-thumbnail-container" onClick={() => {
-                                                            setActiveTab('events');
-                                                            setShowNotifications(false);
-                                                        }}>
+                                                        <div className="card-thumbnail-container">
                                                             <img
                                                                 src={`${API_BASE_URL}${n.snapshot_path}`}
                                                                 alt="Event snapshot"

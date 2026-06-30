@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
         position: 'relative',
         width: 120,
         height: 120,
-        backgroundColor: '#03060d',
+        backgroundColor: '#f1f5f9',
         borderRadius: 60,
         borderWidth: 1.5,
         borderColor: colors.borderColor,

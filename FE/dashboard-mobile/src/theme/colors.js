@@ -1,22 +1,22 @@
 /* theme/colors.js */
 
 export const colors = {
-    bgDeep: '#07080a',         // Deep obsidian black
-    bgPanel: '#0d0f14',        // Dark panel background
-    bgCard: '#141722',         // Dark card background
-    bgCardHover: '#1b1e2c',   // Hover state for dark cards
+    bgDeep: '#ffffff',         // White page background
+    bgPanel: '#ffffff',        // Pure white panel background
+    bgCard: '#ffffff',         // Clean white card background
+    bgCardHover: '#fff5f5',   // Subtle red tint hover state for cards
     
-    borderColor: '#222636',     // Dark slate-gray border
-    borderActive: '#ff3b30',    // Logo orange-red active border
+    borderColor: '#cbd5e1',     // Soft slate border
+    borderActive: '#E61C1F',    // Main Logo Red active border (#E61C1F)
     
-    textPrimary: '#f5f6f8',     // Crisp off-white text
-    textSecondary: '#9ca3af',   // Medium slate text
-    textMuted: '#6b7280',       // Light muted text
+    textPrimary: '#0f172a',     // Dark slate-gray text
+    textSecondary: '#475569',   // Medium slate text
+    textMuted: '#64748b',       // Muted text
     
-    accentCyan: '#ff5e36',      // Synchronized Logo Orange-Red
-    accentOrange: '#f97316',    // Logo flame orange
-    accentRed: '#d32f2f',       // Alert state deep red
-    accentGreen: '#39ff14',     // Keep green for safe/online states
-    accentYellow: '#ffcc00',
-    accentCopper: '#c87533'     // Copper trace color
+    accentCyan: '#E61C1F',      // Primary Red (#E61C1F)
+    accentOrange: '#FF4F19',    // Highlight Red/Orange (#FF4F19)
+    accentRed: '#8A0909',       // Shadow/Accent Dark Red (#8A0909)
+    accentGreen: '#16a34a',     // Keep green for safe/online states
+    accentYellow: '#d97706',    // Amber yellow for text readability
+    accentCopper: '#8A0909'     // Shadow/Accent color
 };

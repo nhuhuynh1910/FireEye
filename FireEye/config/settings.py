@@ -82,7 +82,7 @@ ESP32_SENSOR_TOPIC_TO_ZONE = {
     "esp32c3_4/sensor": 4,
 }
 
-GAS_THRESHOLD_LOW = 600
+GAS_THRESHOLD = 800
 TEMP_THRESHOLD = 50.0
 
 # Cấu hình xoay camera vật lý (0, 90, 180, 270)

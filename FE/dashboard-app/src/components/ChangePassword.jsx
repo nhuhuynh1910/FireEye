@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import logoImg from '../assets/image-removebg-preview.jpg';
+import logoImg from '../assets/logo.jpg';
 
 export const ChangePassword = () => {
     const { logout, updateFirstLoginFlag } = useAuth();

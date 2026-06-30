@@ -94,10 +94,10 @@ def get_sprinkler_state():
 
 
 zone_states = {
-    1: {"temperature": 0.0, "humidity": 0.0, "gas": 1, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0},
-    2: {"temperature": 0.0, "humidity": 0.0, "gas": 1, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0},
-    3: {"temperature": 0.0, "humidity": 0.0, "gas": 1, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0},
-    4: {"temperature": 0.0, "humidity": 0.0, "gas": 1, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0}
+    1: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0},
+    2: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0},
+    3: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0},
+    4: {"temperature": 0.0, "humidity": 0.0, "gas": 0, "pump": "OFF", "buzzer": "OFF", "mode": "MANUAL", "lastUpdated": None, "lastUpdatedTime": 0.0}
 }
 
 

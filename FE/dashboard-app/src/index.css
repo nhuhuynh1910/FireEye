@@ -8,31 +8,32 @@
 }
 
 :root {
-    /* Color Palette - Sleek Dark Mode synchronized with logo.jpg */
-    --bg-deep: #07080a;         /* Deep obsidian black */
-    --bg-panel: #0d0f14;        /* Dark panel background */
-    --bg-card: #141722;         /* Dark card background */
-    --bg-card-hover: #1b1e2c;   /* Hover state for dark cards */
+    /* Color Palette - Premium Light Mode synchronized with logo.jpg */
+    --bg-deep: #ffffff;         /* Pure white background */
+    --bg-panel: #ffffff;        /* Pure white panel background */
+    --bg-card: #ffffff;         /* Clean white card background */
+    --bg-card-hover: #fff5f5;   /* Subtle red tint hover state for cards */
     
-    --border-color: #222636;     /* Dark slate-gray border */
-    --border-active: #ff3b30;    /* Logo orange-red active border */
+    --border-color: #cbd5e1;     /* Soft slate border */
+    --border-active: #E61C1F;    /* Main Logo Red active border */
     
     /* Text Colors */
-    --text-primary: #f5f6f8;     /* Crisp off-white text */
-    --text-secondary: #9ca3af;   /* Medium slate text */
-    --text-muted: #6b7280;       /* Light muted text */
+    --text-primary: #0f172a;     /* Dark slate-gray text for primary */
+    --text-secondary: #475569;   /* Medium slate-gray text */
+    --text-muted: #64748b;       /* Muted text */
     
     /* State Colors */
-    --accent-cyan: #ff5e36;      /* Synchronized Logo Orange-Red */
-    --accent-blue-logo: #ff3b30; /* Main logo red */
-    --accent-orange-logo: #f97316;/* Logo flame orange */
-    --accent-red: #d32f2f;       /* Alert state deep red */
-    --accent-copper: #c87533;    /* Copper traces */
+    --accent-cyan: #E61C1F;      /* Primary Red (#E61C1F) */
+    --accent-blue-logo: #E61C1F; /* Main logo red */
+    --accent-orange-logo: #FF4F19;/* Highlight Red/Orange (#FF4F19) */
+    --accent-red: #8A0909;       /* Shadow/Accent Dark Red (#8A0909) */
+    --accent-copper: #8A0909;    /* Shadow/Accent tint */
+    --accent-amber: #f59e0b;     /* Diagnostics Amber warning */
     
     /* Glow Effects */
-    --glow-cyan: 0 0 15px rgba(255, 94, 54, 0.4);
-    --glow-red: 0 0 15px rgba(211, 47, 47, 0.5);
-    --glow-copper: 0 0 10px rgba(200, 117, 51, 0.15);
+    --glow-cyan: 0 4px 12px rgba(230, 28, 31, 0.15);
+    --glow-red: 0 4px 15px rgba(138, 9, 9, 0.25);
+    --glow-copper: 0 2px 6px rgba(0, 0, 0, 0.05);
     
     --transition-speed: 0.25s;
     
