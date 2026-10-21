@@ -17,7 +17,12 @@ from services.db_service import (
     insert_user_session,
     get_active_sessions_count,
     delete_oldest_session,
-    delete_user_session
+    delete_user_session,
+    save_cloud_principal,
+    get_cloud_principal,
+    is_grant_consumed,
+    record_consumed_grant,
+    create_cloud_session
 )
 from services.auth_service import (
     verify_password,
@@ -27,8 +32,10 @@ from services.auth_service import (
     decode_jwt,
     get_current_user,
     is_password_strong,
+    verify_pi_grant,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
+
 
 router = APIRouter(
     prefix="/api/auth",
@@ -238,3 +245,125 @@ def change_password(payload: ChangePasswordRequest, current_user: dict = Depends
     new_hash = hash_password(payload.new_password)
     update_user_password(current_user["id"], new_hash, is_first_login=0)
     return {"success": True, "message": "Đổi mật khẩu thành công"}
+
+
+class GrantExchangeRequest(BaseModel):
+    grant_token: str
+    installation_id: Optional[str] = None
+    device_name: Optional[str] = "Unknown Device"
+
+
+class SignClaimChallengeRequest(BaseModel):
+    challenge: str
+
+
+@router.post("/exchange-grant")
+def exchange_grant(payload: GrantExchangeRequest, response: Response):
+    try:
+        grant_data = verify_pi_grant(payload.grant_token)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Grant token không hợp lệ hoặc đã hết hạn: {str(e)}"
+        )
+
+    grant_id = grant_data.get("grantId")
+    if not grant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Thiếu grantId trong token")
+
+    if is_grant_consumed(grant_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Mã grant đã được sử dụng trước đó (Anti-Replay detected)"
+        )
+
+    uid = grant_data["uid"]
+    role = grant_data["role"]
+    system_id = grant_data.get("systemId", "system-default")
+    membership_version = grant_data.get("membershipVersion", 1)
+    device_id = grant_data.get("aud", "pi-device")
+
+    session_id = uuid.uuid4().hex
+    session_exp_dt = datetime.now() + timedelta(days=7)
+    session_exp_str = session_exp_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Anti-replay: record consumed grant
+    record_consumed_grant(grant_id, device_id, session_id, session_exp_str)
+
+    # Upsert principal and session
+    save_cloud_principal(
+        uid=uid,
+        system_id=system_id,
+        role=role,
+        membership_version=membership_version,
+        status="active"
+    )
+    create_cloud_session(
+        session_id=session_id,
+        uid=uid,
+        role=role,
+        installation_id=payload.installation_id,
+        grant_id=grant_id,
+        expires_at=session_exp_str
+    )
+
+    access_token = create_access_token(user_id=uid, role=role, jti=session_id, is_cloud=True)
+    refresh_token = create_refresh_token(user_id=uid, jti=session_id, is_cloud=True)
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/"
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/"
+    )
+
+    return {
+        "token": access_token,
+        "refresh_token": refresh_token,
+        "user": {
+            "id": uid,
+            "username": uid,
+            "role": role,
+            "is_cloud": True,
+            "system_id": system_id
+        }
+    }
+
+
+@router.post("/sign-claim-challenge")
+def sign_claim_challenge(payload: SignClaimChallengeRequest):
+    if not payload.challenge or not payload.challenge.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Challenge không được để trống")
+
+    import sys
+    from pathlib import Path
+    tools_dir = Path(__file__).resolve().parent.parent.parent.parent / "tools"
+    if str(tools_dir) not in sys.path:
+        sys.path.insert(0, str(tools_dir))
+
+    try:
+        import provision_device
+        key_path = provision_device.DEFAULT_PRIVATE_KEY_PATH
+        if not key_path.exists():
+            provision_device.init_keys()
+        res = provision_device.sign_challenge(payload.challenge.strip(), key_path=key_path)
+        pub_info = provision_device.export_public(key_path=key_path)
+        return {
+            "device_id": res["device_id"],
+            "signature": res["signature"],
+            "public_key_pem": pub_info["public_key_pem"],
+            "fingerprint": pub_info["fingerprint"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Lỗi ký challenge: {str(e)}")
+

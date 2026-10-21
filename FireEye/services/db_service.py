@@ -1,13 +1,15 @@
+import os
 import sqlite3
 import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 
-DB_DIR = Path("data")
-DB_PATH = DB_DIR / "fireeye.db"
+DB_DIR = Path(os.getenv("FIREEYE_DATA_DIR", "data"))
+DB_PATH = Path(os.getenv("FIREEYE_DB_PATH", str(DB_DIR / "fireeye.db")))
 
-DB_DIR.mkdir(exist_ok=True)
+DB_DIR.mkdir(parents=True, exist_ok=True)
+
 
 
 def get_now():
@@ -132,7 +134,7 @@ def init_db():
         )
     """)
 
-    # Tạo bảng lưu phiên đăng nhập của thiết bị
+    # Tạo bảng lưu phiên đăng nhập của thiết bị cục bộ
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,6 +146,46 @@ def init_db():
             last_active TEXT,
             expires_at TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Bảng lưu danh tính thành viên Cloud (Cloud Principals) - Mục 5.4 M2
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cloud_principals (
+            uid TEXT PRIMARY KEY,
+            system_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            membership_version INTEGER DEFAULT 1,
+            status TEXT DEFAULT 'active',
+            full_name TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )
+    """)
+
+    # Bảng lưu phiên đăng nhập được cấp từ Cloud (Cloud Granted Sessions)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cloud_granted_sessions (
+            session_id TEXT PRIMARY KEY,
+            uid TEXT NOT NULL,
+            role TEXT NOT NULL,
+            installation_id TEXT,
+            grant_id TEXT UNIQUE NOT NULL,
+            issued_at TEXT,
+            expires_at TEXT,
+            revoked_at TEXT,
+            FOREIGN KEY (uid) REFERENCES cloud_principals(uid) ON DELETE CASCADE
+        )
+    """)
+
+    # Bảng lưu các grant đã được tiêu thụ (Anti-Replay / Idempotency)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS consumed_grants (
+            grant_id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            consumed_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
         )
     """)
 
@@ -800,3 +842,159 @@ def is_session_valid(token_id: str) -> bool:
         return datetime.now() < expires_at_dt
     except Exception:
         return False
+
+
+def save_cloud_principal(
+    uid: str,
+    system_id: str,
+    role: str,
+    membership_version: int = 1,
+    status: str = "active",
+    full_name: Optional[str] = None
+) -> None:
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO cloud_principals (
+            uid, system_id, role, membership_version, status, full_name, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(uid) DO UPDATE SET
+            system_id = excluded.system_id,
+            role = excluded.role,
+            membership_version = excluded.membership_version,
+            status = excluded.status,
+            full_name = coalesce(excluded.full_name, cloud_principals.full_name),
+            updated_at = excluded.updated_at
+    """, (uid, system_id, role, membership_version, status, full_name, now_str, now_str))
+    conn.commit()
+    conn.close()
+
+
+def get_cloud_principal(uid: str) -> Optional[dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT uid, system_id, role, membership_version, status, full_name, created_at, updated_at
+        FROM cloud_principals
+        WHERE uid = ?
+    """, (uid,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def is_grant_consumed(grant_id: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT grant_id FROM consumed_grants WHERE grant_id = ?", (grant_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+
+def record_consumed_grant(grant_id: str, device_id: str, session_id: str, expires_at: str) -> None:
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO consumed_grants (grant_id, device_id, session_id, consumed_at, expires_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (grant_id, device_id, session_id, now_str, expires_at))
+    conn.commit()
+    conn.close()
+
+
+def create_cloud_session(
+    session_id: str,
+    uid: str,
+    role: str,
+    installation_id: Optional[str],
+    grant_id: str,
+    expires_at: str
+) -> None:
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO cloud_granted_sessions (
+            session_id, uid, role, installation_id, grant_id, issued_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (session_id, uid, role, installation_id, grant_id, now_str, expires_at))
+    conn.commit()
+    conn.close()
+
+
+def get_cloud_session(session_id: str) -> Optional[dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT session_id, uid, role, installation_id, grant_id, issued_at, expires_at, revoked_at
+        FROM cloud_granted_sessions
+        WHERE session_id = ?
+    """, (session_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def is_cloud_session_valid(session_id: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT s.expires_at, s.revoked_at, p.status as principal_status
+        FROM cloud_granted_sessions s
+        LEFT JOIN cloud_principals p ON s.uid = p.uid
+        WHERE s.session_id = ?
+    """, (session_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return False
+    if row["revoked_at"] is not None:
+        return False
+    if row["principal_status"] == "revoked":
+        return False
+
+    expires_at_str = row["expires_at"]
+    try:
+        expires_at_dt = datetime.strptime(expires_at_str, "%Y-%m-%d %H:%M:%S")
+        return datetime.now() < expires_at_dt
+    except Exception:
+        return False
+
+
+def revoke_cloud_session(session_id: str) -> bool:
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE cloud_granted_sessions
+        SET revoked_at = ?
+        WHERE session_id = ? AND revoked_at IS NULL
+    """, (now_str, session_id))
+    conn.commit()
+    count = cursor.rowcount
+    conn.close()
+    return count > 0
+
+
+def revoke_cloud_principal(uid: str) -> int:
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE cloud_principals
+        SET status = 'revoked', updated_at = ?
+        WHERE uid = ?
+    """, (now_str, uid))
+    cursor.execute("""
+        UPDATE cloud_granted_sessions
+        SET revoked_at = ?
+        WHERE uid = ? AND revoked_at IS NULL
+    """, (now_str, uid))
+    conn.commit()
+    count = cursor.rowcount
+    conn.close()
+    return count

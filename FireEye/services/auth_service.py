@@ -5,6 +5,7 @@ import hashlib
 from datetime import datetime, timedelta
 import os
 import re
+import time
 # pyrefly: ignore [missing-import]
 from fastapi import Request, HTTPException, status, Depends
 from services.db_service import get_user_by_id
@@ -53,7 +54,7 @@ def decode_jwt(token: str) -> dict:
         
         if "exp" in payload:
             exp_timestamp = payload["exp"]
-            if datetime.utcnow().timestamp() > exp_timestamp:
+            if time.time() > exp_timestamp:
                 raise ValueError("JWT token expired")
                 
         return payload
@@ -87,32 +88,60 @@ def verify_password(password: str, hashed: str) -> bool:
     except Exception:
         return False
 
-def create_access_token(user_id: int, role: str, jti: str = None) -> str:
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+IGNIVO_GRANT_SECRET = os.getenv("IGNIVO_GRANT_SECRET", "ignivo_cloud_grant_secret_key_8899aabbcc")
+
+def verify_pi_grant(grant_token: str) -> dict:
+    """Xác minh tính hợp lệ và chữ ký HMAC của PiGrant token từ Ignivo Cloud."""
+    parts = grant_token.split(".")
+    if len(parts) != 3:
+        raise ValueError("Invalid grant token format")
+
+    header_b64, payload_b64, signature_b64 = parts
+    signing_input = f"{header_b64}.{payload_b64}".encode("utf-8")
+    expected_sig = hmac.new(IGNIVO_GRANT_SECRET.encode("utf-8"), signing_input, hashlib.sha256).digest()
+    expected_sig_b64 = base64url_encode(expected_sig)
+
+    if not hmac.compare_digest(signature_b64, expected_sig_b64):
+        raise ValueError("PiGrant signature verification failed")
+
+    payload = json.loads(base64url_decode(payload_b64).decode("utf-8"))
+
+    now = time.time()
+    if payload.get("exp") and payload["exp"] < now:
+        raise ValueError("PiGrant token has expired")
+
+    return payload
+
+
+def create_access_token(user_id, role: str, jti: str = None, is_cloud: bool = False) -> str:
+    expire = time.time() + (ACCESS_TOKEN_EXPIRE_MINUTES * 60)
     if not jti:
         import uuid
         jti = uuid.uuid4().hex
     payload = {
         "sub": str(user_id),
         "role": role,
-        "exp": expire.timestamp(),
+        "exp": expire,
         "type": "access",
-        "jti": jti
+        "jti": jti,
+        "is_cloud": is_cloud
     }
     return encode_jwt(payload)
 
-def create_refresh_token(user_id: int, jti: str = None) -> str:
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+def create_refresh_token(user_id, jti: str = None, is_cloud: bool = False) -> str:
+    expire = time.time() + (REFRESH_TOKEN_EXPIRE_DAYS * 86400)
     if not jti:
         import uuid
         jti = uuid.uuid4().hex
     payload = {
         "sub": str(user_id),
-        "exp": expire.timestamp(),
+        "exp": expire,
         "type": "refresh",
-        "jti": jti
+        "jti": jti,
+        "is_cloud": is_cloud
     }
     return encode_jwt(payload)
+
 
 async def get_current_user(request: Request):
     # 1. Try to get token from Authorization header (Bearer <JWT>)
@@ -138,14 +167,42 @@ async def get_current_user(request: Request):
                 detail="Invalid token type"
             )
             
-        # Validate that the session jti exists and is active in database
         jti = payload.get("jti")
         if not jti:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token is missing session ID"
             )
-            
+
+        sub = str(payload.get("sub", ""))
+        is_cloud = payload.get("is_cloud", False) or not sub.isdigit()
+
+        if is_cloud:
+            from services.db_service import is_cloud_session_valid, get_cloud_principal
+            if not is_cloud_session_valid(jti):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Cloud session has expired or was revoked"
+                )
+            principal = get_cloud_principal(sub)
+            if not principal or principal.get("status") == "revoked":
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Cloud principal is inactive or revoked"
+                )
+            role = principal.get("role") or payload.get("role", "VIEWER")
+            return {
+                "id": sub,
+                "username": sub,
+                "full_name": principal.get("full_name") or f"Cloud User ({sub[:8]})",
+                "role": role,
+                "is_cloud": True,
+                "is_first_login": 0,
+                "is_active": 1,
+                "jti": jti,
+            }
+
+        # Local user handling
         from services.db_service import is_session_valid
         if not is_session_valid(jti):
             raise HTTPException(
@@ -153,7 +210,7 @@ async def get_current_user(request: Request):
                 detail="Session has expired or was logged out"
             )
             
-        user_id = int(payload.get("sub"))
+        user_id = int(sub)
         user = get_user_by_id(user_id)
         if not user:
             raise HTTPException(
@@ -163,6 +220,7 @@ async def get_current_user(request: Request):
             
         user_copy = dict(user)
         user_copy["jti"] = jti
+        user_copy["is_cloud"] = False
         return user_copy
     except ValueError as e:
         raise HTTPException(
@@ -176,4 +234,13 @@ def require_admin(current_user = Depends(get_current_user)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: Admin access required"
         )
+    return current_user
+
+def require_operator_or_above(current_user = Depends(get_current_user)):
+    if current_user["role"] not in ("ADMIN", "OWNER", "OPERATOR", "USER"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Operator, Admin or Owner access required"
+        )
+
     return current_user

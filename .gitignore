@@ -31,3 +31,5 @@ FireEye/uploads/
 # IDE settings
 .vscode/
 .idea/
+.testdeps/
+
