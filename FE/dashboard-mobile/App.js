@@ -5,15 +5,15 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SystemProvider } from './src/store/SystemContext';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 
-// Polyfill react-native-safe-area-context if not installed yet for mockup run
-import { SafeAreaView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function App() {
   return (
     <SystemProvider>
       <SafeAreaProvider>
         <SafeAreaView style={styles.container}>
-          <StatusBar style="light" backgroundColor="#07080a" />
+          <StatusBar style="dark" backgroundColor="#f8fafc" />
           <DashboardScreen />
         </SafeAreaView>
       </SafeAreaProvider>
@@ -24,6 +24,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#07080a',
+    backgroundColor: '#ffffff',
   },
 });

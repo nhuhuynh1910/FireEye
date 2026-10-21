@@ -1,4 +1,4 @@
-/* index.css - Global Styles & Reset */
+/* index.css - Global Styles, Core Tokens, and Resets */
 * {
     margin: 0;
     padding: 0;
@@ -8,29 +8,32 @@
 }
 
 :root {
-    --bg-deep: #ffffff;
-    --bg-panel: #f8fafc;
-    --bg-card: #ffffff;
-    --bg-card-hover: #f1f5f9;
+    /* Color Palette - Premium Light Mode synchronized with logo.jpg */
+    --bg-deep: #ffffff;         /* Pure white background */
+    --bg-panel: #ffffff;        /* Pure white panel background */
+    --bg-card: #ffffff;         /* Clean white card background */
+    --bg-card-hover: #fff5f5;   /* Subtle red tint hover state for cards */
     
-    --border-color: #e2e8f0;
-    --border-active: #0ea5e9;
+    --border-color: #cbd5e1;     /* Soft slate border */
+    --border-active: #E61C1F;    /* Main Logo Red active border */
     
-    --text-primary: #0f172a;
-    --text-secondary: #475569;
-    --text-muted: #94a3b8;
+    /* Text Colors */
+    --text-primary: #0f172a;     /* Dark slate-gray text for primary */
+    --text-secondary: #475569;   /* Medium slate-gray text */
+    --text-muted: #64748b;       /* Muted text */
     
-    --accent-cyan: #0ea5e9;
-    --accent-blue-logo: #2563eb;
-    --accent-orange-logo: #f97316;
-    --accent-red-logo: #ef4444;
+    /* State Colors */
+    --accent-cyan: #E61C1F;      /* Primary Red (#E61C1F) */
+    --accent-blue-logo: #E61C1F; /* Main logo red */
+    --accent-orange-logo: #FF4F19;/* Highlight Red/Orange (#FF4F19) */
+    --accent-red: #8A0909;       /* Shadow/Accent Dark Red (#8A0909) */
+    --accent-copper: #8A0909;    /* Shadow/Accent tint */
+    --accent-amber: #f59e0b;     /* Diagnostics Amber warning */
     
-    --accent-green: #22c55e;
-    --accent-red: #ef4444;
-    --accent-yellow: #f59e0b;
-    
-    --glow-cyan: 0 4px 12px rgba(14, 165, 233, 0.15);
-    --glow-green: 0 4px 12px rgba(34, 197, 94, 0.15);
+    /* Glow Effects */
+    --glow-cyan: 0 4px 12px rgba(230, 28, 31, 0.15);
+    --glow-red: 0 4px 15px rgba(138, 9, 9, 0.25);
+    --glow-copper: 0 2px 6px rgba(0, 0, 0, 0.05);
     
     --transition-speed: 0.25s;
     
@@ -55,6 +58,25 @@ body {
     text-align: left !important;
     min-height: 100vh !important;
     display: flex !important;
-    flex-direction: row !important;
+    flex-direction: column !important;
     box-sizing: border-box !important;
+}
+
+/* Custom Scrollbar for high-tech look */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(6, 10, 19, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-cyan);
 }

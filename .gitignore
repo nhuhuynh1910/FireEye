@@ -1,0 +1,33 @@
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Python virtual environment
+venv/
+.venv/
+env/
+
+# Databases
+**/*.db
+**/*.sqlite3
+
+# Logs
+**/*.log
+
+# Frontend build & dependencies
+**/node_modules/
+**/dist/
+**/build/
+
+# Application snapshots/uploads
+FireEye/static/snapshots/
+FireEye/uploads/
+**/*.jpg
+**/*.png
+**/*.jpeg
+
+# IDE settings
+.vscode/
+.idea/

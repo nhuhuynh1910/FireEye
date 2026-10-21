@@ -2,9 +2,9 @@
 import React from 'react';
 import { useSystem } from '../store/SystemContext';
 import { Dashboard } from '../pages/Dashboard';
-import { Playback } from '../pages/Playback';
-import { CamerasList } from '../pages/CamerasList';
+import { EventLogs } from '../pages/EventLogs';
 import { Settings } from '../pages/Settings';
+import { AdminLayout } from '../components/AdminLayout';
 
 export const Navigation = () => {
     const { activeTab } = useSystem();
@@ -12,12 +12,12 @@ export const Navigation = () => {
     switch (activeTab) {
         case 'dashboard':
             return <Dashboard />;
-        case 'playback':
-            return <Playback />;
-        case 'cameras':
-            return <CamerasList />;
+        case 'events':
+            return <EventLogs />;
         case 'settings':
             return <Settings />;
+        case 'admin':
+            return <AdminLayout />;
         default:
             return <Dashboard />;
     }

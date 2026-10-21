@@ -1,0 +1,350 @@
+/* pages/admin/AdminCameraConfig.jsx */
+import React from 'react';
+import { useSystem } from '../../store/SystemContext';
+import { api } from '../../services/api';
+import { VideoFeed } from '../../components/VideoFeed';
+
+export const AdminCameraConfig = () => {
+    const {
+        isCameraOnline,
+        isBackendConnected,
+        autoScanActive,
+        setAutoScanActive,
+        zones,
+        toggleZoneSprinkler,
+        activeZoneId,
+        setActiveZoneId
+    } = useSystem();
+
+    const handlePTZStart = async (action) => {
+        if (!isCameraOnline || autoScanActive) return;
+        setActiveZoneId(null); // Clear focus zone during manual rotation
+        try {
+            await api.sendPTZCommand(action);
+        } catch (err) {
+            console.error(`Admin PTZ ${action} start error:`, err);
+        }
+    };
+
+    const handlePTZStop = async (action) => {
+        if (!isCameraOnline || autoScanActive) return;
+        try {
+            await api.sendPTZCommand('stop', { code: action });
+        } catch (err) {
+            console.error("Admin PTZ stop error:", err);
+        }
+    };
+
+    const handleHardStop = async () => {
+        if (!isCameraOnline || autoScanActive) return;
+        try {
+            await api.sendPTZCommand('stop');
+        } catch (err) {
+            console.error("Admin PTZ hard stop error:", err);
+        }
+    };
+
+    const handleGoHome = async () => {
+        if (!isCameraOnline || !isBackendConnected) return;
+        setAutoScanActive(false);
+        setActiveZoneId(null); // Return to default Home has no active zone focus
+        try {
+            await api.goHome();
+            alert("Camera returned to default Home position.");
+        } catch (err) {
+            console.error("PTZ go home error:", err);
+        }
+    };
+
+    const handleSetHome = async () => {
+        if (!isCameraOnline || !isBackendConnected) return;
+        if (!window.confirm("Overwrite current camera position as the default Home position?")) return;
+        try {
+            const res = await api.setHome();
+            if (res.success) {
+                alert("Successfully saved current position as default Home!");
+            }
+        } catch (err) {
+            console.error("PTZ set home error:", err);
+        }
+    };
+
+    const handleSetZonePreset = async (zoneId, zoneName) => {
+        if (!isCameraOnline || !isBackendConnected) return;
+        if (!window.confirm(`Overwrite current camera position as the preset for ${zoneName}?`)) return;
+        try {
+            const res = await api.setZonePreset(zoneId);
+            if (res.success) {
+                setActiveZoneId(zoneId); // Highlight as the active saved sector
+                alert(`Successfully saved current position as preset for ${zoneName}!`);
+            } else {
+                alert(`Failed to save preset: ${res.message || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error(`PTZ set zone preset error:`, err);
+            alert(`Failed to save preset: ${err.message}`);
+        }
+    };
+
+    const handleMoveToZone = async (zoneId) => {
+        if (!isCameraOnline || !isBackendConnected) return;
+        setAutoScanActive(false);
+        setActiveZoneId(zoneId); // Focus the sector being navigated to
+        try {
+            await api.moveToZone(zoneId);
+        } catch (err) {
+            console.error(`Failed to move camera to zone ${zoneId}:`, err);
+        }
+    };
+
+    return (
+        <div className="admin-view-panel">
+            <div className="admin-view-header">
+                <h2>PTZ CAMERA & ZONE SETTINGS</h2>
+                <p>Align hardware telemetry, configure patrol scanning presets, and manual trigger controls</p>
+            </div>
+
+            <div className="admin-grid-layout" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', marginTop: '16px' }}>
+                
+                {/* Left Side: Unified Camera Control Station */}
+                <div className="admin-config-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <h3 className="section-title">CAMERA TELEMETRY CONTROL STATION</h3>
+                    
+                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                        {/* Video Feed & Auto Patrol */}
+                        <div style={{ flex: '1.5 1 320px', minWidth: '320px' }}>
+                            <div style={{ borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                                <VideoFeed />
+                            </div>
+                            
+                            {/* AutoScan Status Toggle */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-deep)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', marginTop: '12px' }}>
+                                <div>
+                                    <span style={{ fontWeight: 'bold', fontSize: '11px' }}>PATROL AUTO-SCANNING</span>
+                                    <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Rotate camera through Zones 1-4 every 15s</div>
+                                </div>
+                                <label className="switch-container">
+                                    <input
+                                        type="checkbox"
+                                        checked={autoScanActive}
+                                        onChange={(e) => setAutoScanActive(e.target.checked)}
+                                    />
+                                    <span className="switch-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Joystick & Presets */}
+                        <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--accent-cyan)', marginBottom: '8px', letterSpacing: '0.5px' }}>
+                                MANUAL PTZ OVERRIDE
+                            </span>
+                            
+                            {/* PTZ Joystick */}
+                            <div className="ptz-joystick-grid" style={{ pointerEvents: autoScanActive ? 'none' : 'auto', opacity: autoScanActive ? 0.35 : 1 }}>
+                                {/* Up */}
+                                <button
+                                    className="ptz-hex-btn up"
+                                    title="Pan Up"
+                                    onMouseDown={() => handlePTZStart('up')}
+                                    onMouseUp={() => handlePTZStop('up')}
+                                    onMouseLeave={() => handlePTZStop('up')}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <polyline points="18 15 12 9 6 15"/>
+                                    </svg>
+                                </button>
+
+                                {/* Left */}
+                                <button
+                                    className="ptz-hex-btn left"
+                                    title="Pan Left"
+                                    onMouseDown={() => handlePTZStart('left')}
+                                    onMouseUp={() => handlePTZStop('left')}
+                                    onMouseLeave={() => handlePTZStop('left')}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <polyline points="15 18 9 12 15 6"/>
+                                    </svg>
+                                </button>
+
+                                {/* Center Stop */}
+                                <button
+                                    className="ptz-hex-btn center-stop"
+                                    title="STOP MOVEMENT"
+                                    onClick={handleHardStop}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '14px', height: '14px' }}>
+                                        <rect x="6" y="6" width="12" height="12" rx="1"/>
+                                    </svg>
+                                </button>
+
+                                {/* Right */}
+                                <button
+                                    className="ptz-hex-btn right"
+                                    title="Pan Right"
+                                    onMouseDown={() => handlePTZStart('right')}
+                                    onMouseUp={() => handlePTZStop('right')}
+                                    onMouseLeave={() => handlePTZStop('right')}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <polyline points="9 18 15 12 9 6"/>
+                                    </svg>
+                                </button>
+
+                                {/* Down */}
+                                <button
+                                    className="ptz-hex-btn down"
+                                    title="Pan Down"
+                                    onMouseDown={() => handlePTZStart('down')}
+                                    onMouseUp={() => handlePTZStop('down')}
+                                    onMouseLeave={() => handlePTZStop('down')}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <polyline points="6 9 12 15 18 9"/>
+                                    </svg>
+                                </button>
+
+                                {/* Zoom In */}
+                                <button
+                                    className="ptz-hex-btn zoom-in"
+                                    title="Zoom In"
+                                    onMouseDown={() => handlePTZStart('zoom-in')}
+                                    onMouseUp={() => handlePTZStop('zoom-in')}
+                                    onMouseLeave={() => handlePTZStop('zoom-in')}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <line x1="12" y1="5" x2="12" y2="19"/>
+                                        <line x1="5" y1="12" x2="19" y2="12"/>
+                                    </svg>
+                                </button>
+
+                                {/* Zoom Out */}
+                                <button
+                                    className="ptz-hex-btn zoom-out"
+                                    title="Zoom Out"
+                                    onMouseDown={() => handlePTZStart('zoom-out')}
+                                    onMouseUp={() => handlePTZStop('zoom-out')}
+                                    onMouseLeave={() => handlePTZStop('zoom-out')}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" style={{ width: '16px', height: '16px' }}>
+                                        <line x1="5" y1="12" x2="19" y2="12"/>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {/* Presets setup */}
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '12px', width: '100%' }}>
+                                <button className="btn-tech-action" onClick={handleGoHome} disabled={autoScanActive} style={{ flexGrow: 1, padding: '6px 2px', fontSize: '9px', marginTop: 0 }}>
+                                    GO HOME
+                                </button>
+                                <button className="btn-tech-action" onClick={handleSetHome} disabled={autoScanActive} style={{ flexGrow: 1, padding: '6px 2px', fontSize: '9px', marginTop: 0, borderColor: '#f59e0b', color: '#f59e0b' }}>
+                                    SET HOME
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Side: Zones and Sprinklers manual override */}
+                <div className="admin-config-card">
+                    <h3 className="section-title">SECTOR PRESETS & OUTLETS</h3>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                        Force camera transition to sectors or trigger manual fire extinguisher pumps.
+                    </p>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {[1, 2, 3, 4].map(zoneId => {
+                            const zoneData = zones[zoneId] || { pump: "OFF", temperature: 0.0, humidity: 0.0, gas: 1, online: false };
+                            const zoneName = {
+                                1: "Zone 01: Warehouse North",
+                                2: "Zone 02: Loading Dock",
+                                3: "Zone 03: Server Room",
+                                4: "Zone 04: Office Suite"
+                            }[zoneId];
+
+                            const isOnline = zoneData.online !== false;
+                            const isActiveZone = zoneId === activeZoneId;
+
+                            return (
+                                <div 
+                                    key={zoneId} 
+                                    style={{ 
+                                        display: 'flex', 
+                                        flexDirection: 'column', 
+                                        padding: '12px', 
+                                        background: isActiveZone ? 'rgba(230, 28, 31, 0.04)' : '#f8fafc', 
+                                        border: isActiveZone ? '1.5px solid var(--accent-cyan)' : '1px solid var(--border-color)', 
+                                        borderRadius: '6px', 
+                                        opacity: isOnline ? 1 : 0.8,
+                                        boxShadow: isActiveZone ? '0 4px 15px rgba(230, 28, 31, 0.08)' : 'none',
+                                        transition: 'all 0.3s ease'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            <span style={{ fontSize: '12px', fontWeight: 'bold', color: isActiveZone ? 'var(--accent-cyan)' : 'var(--text-primary)' }}>
+                                                {zoneName}
+                                            </span>
+                                            {isActiveZone && (
+                                                <span style={{ fontSize: '9px', color: 'var(--accent-cyan)', fontWeight: 'bold', letterSpacing: '0.5px' }}>
+                                                    [ CAMERA POINTING HERE ]
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className={`status-dot-badge ${!isOnline ? 'offline' : (zoneData.pump === 'ON' ? 'online' : 'offline')}`} style={{ fontSize: '9px' }}>
+                                            {!isOnline ? 'OFFLINE' : `PUMP: ${zoneData.pump}`}
+                                        </span>
+                                    </div>
+                                    
+                                    <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                                        <button 
+                                            className="btn-tech-action" 
+                                            onClick={() => handleMoveToZone(zoneId)} 
+                                            style={{ flexGrow: 1, fontSize: '9px', padding: '6px 2px', marginTop: 0 }}
+                                            disabled={autoScanActive}
+                                        >
+                                            MOVE CAMERA
+                                        </button>
+                                        <button 
+                                            className="btn-tech-action" 
+                                            onClick={() => handleSetZonePreset(zoneId, zoneName)} 
+                                            style={{ 
+                                                flexGrow: 1, 
+                                                fontSize: '9px', 
+                                                padding: '6px 2px', 
+                                                marginTop: 0,
+                                                borderColor: '#f59e0b',
+                                                color: '#f59e0b'
+                                            }}
+                                            disabled={autoScanActive}
+                                        >
+                                            SAVE POSITION
+                                        </button>
+                                        <button 
+                                            className="btn-tech-action" 
+                                            onClick={() => toggleZoneSprinkler(zoneId)} 
+                                            style={{ 
+                                                flexGrow: 1, 
+                                                fontSize: '9px', 
+                                                padding: '6px 2px', 
+                                                marginTop: 0,
+                                                borderColor: !isOnline ? 'var(--text-muted)' : (zoneData.pump === 'ON' ? 'var(--accent-red)' : 'var(--accent-cyan)'),
+                                                color: !isOnline ? 'var(--text-muted)' : (zoneData.pump === 'ON' ? 'var(--accent-red)' : 'var(--accent-cyan)'),
+                                                opacity: !isOnline ? 0.5 : 1
+                                            }}
+                                            disabled={!isOnline}
+                                        >
+                                            {!isOnline ? 'PUMP N/A' : (zoneData.pump === 'ON' ? 'PUMP OFF' : 'PUMP ON')}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    );
+};

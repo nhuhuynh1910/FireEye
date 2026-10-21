@@ -1,184 +1,1695 @@
 /* screens/DashboardScreen.jsx - Mobile Native Version */
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { 
+    View, 
+    Text, 
+    StyleSheet, 
+    Image, 
+    Pressable, 
+    ScrollView, 
+    TextInput, 
+    Modal, 
+    Animated, 
+    ActivityIndicator,
+    Dimensions,
+    Platform
+} from 'react-native';
 import { useSystem } from '../store/SystemContext';
-import { PTZController } from '../components/PTZController';
 import { formatTimestamp } from '../utils/helpers';
 import { colors } from '../theme/colors';
 import { api } from '../services/api';
+import { WebView } from 'react-native-webview';
+import logoImg from '../../assets/logo.jpg';
+import * as ImagePicker from 'expo-image-picker';
+import { PTZController } from '../components/PTZController';
 
-const CameraCard = ({ id, name, isActive, onSelect, isOnline }) => {
-    const [timestamp, setTimestamp] = useState("");
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-    useEffect(() => {
-        const updateTime = () => setTimestamp(formatTimestamp(new Date()));
-        updateTime();
-        const interval = setInterval(updateTime, 1000);
-        return () => clearInterval(interval);
-    }, []);
+const ToastSnackbar = ({ toast, onDismiss }) => {
+    const slideAnim = React.useRef(new Animated.Value(-100)).current;
 
-    const showStream = id === 1 && isOnline;
+    React.useEffect(() => {
+        // Slide down
+        Animated.timing(slideAnim, {
+            toValue: Platform.OS === 'ios' ? 50 : 20, // Slide down
+            duration: 450,
+            useNativeDriver: true,
+        }).start();
+
+        // Auto dismiss after 4.5 seconds
+        const timer = setTimeout(() => {
+            Animated.timing(slideAnim, {
+                toValue: -150, // Slide back up
+                duration: 400,
+                useNativeDriver: true,
+            }).start(() => {
+                onDismiss();
+            });
+        }, 4500);
+
+        return () => clearTimeout(timer);
+    }, [toast]);
+
+    const getBgColor = () => {
+        const lvl = toast.riskLevel?.toUpperCase();
+        if (lvl === 'CRITICAL' || lvl === 'EMERGENCY' || lvl === 'HIGH') return '#2f0f0f';
+        if (lvl === 'WARNING' || lvl === 'MEDIUM') return '#2d1e05';
+        return '#081e24'; // INFO or default
+    };
+
+    const getBorderColor = () => {
+        const lvl = toast.riskLevel?.toUpperCase();
+        if (lvl === 'CRITICAL' || lvl === 'EMERGENCY' || lvl === 'HIGH') return '#ef4444';
+        if (lvl === 'WARNING' || lvl === 'MEDIUM') return '#f59e0b';
+        return '#06b6d4';
+    };
 
     return (
-        <Pressable
-            style={[styles.cameraCard, isActive && styles.activeCard]}
-            onPress={onSelect}
+        <Animated.View 
+            style={[
+                styles.toastContainer, 
+                { 
+                    transform: [{ translateY: slideAnim }],
+                    backgroundColor: getBgColor(),
+                    borderColor: getBorderColor()
+                }
+            ]}
         >
-            <View style={styles.videoContainer}>
-                {showStream ? (
-                    <Image
-                        source={{ uri: api.getStreamUrl() }}
-                        style={styles.streamFeed}
-                        resizeMode="cover"
-                    />
-                ) : (
-                    <View style={styles.placeholderFeed}>
-                        <Text style={styles.placeholderIcon}>📹</Text>
-                        <Text style={styles.placeholderText}>SIMULATOR - CAM 0{id}</Text>
-                        <Text style={styles.telemetryText}>FPS: 30.0 | 1080p | AGC: ON</Text>
-                    </View>
-                )}
-                <View style={styles.scanLine} />
+            <View style={styles.toastIconWrapper}>
+                <Text style={styles.toastIcon}>🚨</Text>
             </View>
-            
-            <View style={styles.overlayTop}>
-                <View style={styles.badge}><Text style={styles.badgeText}>LIVE</Text></View>
-                <Text style={styles.cameraLabel}>{name}</Text>
+            <View style={styles.toastTextWrapper}>
+                <Text style={styles.toastTitle}>
+                    FIREEYE ALERT ({toast.riskLevel})
+                </Text>
+                <Text style={styles.toastBody} numberOfLines={2}>
+                    {toast.message}
+                </Text>
             </View>
-            
-            <View style={styles.overlayBottom}>
-                <Text style={styles.timestampText}>{timestamp.split(' ')[0]}</Text>
-                <Text style={styles.signalText}>📶 {id === 1 ? '100%' : id === 2 ? '92%' : id === 3 ? '98%' : '85%'}</Text>
-            </View>
-        </Pressable>
+            <Pressable style={styles.toastCloseBtn} onPress={onDismiss}>
+                <Text style={styles.toastCloseText}>✕</Text>
+            </Pressable>
+        </Animated.View>
     );
 };
 
 export const DashboardScreen = () => {
     const {
+        activeTab,
+        setActiveTab,
         activeCameraId,
         setActiveCameraId,
+        isBackendConnected,
         isCameraOnline,
+        raspberryPiIp,
+        setRaspberryPiIp,
         npuLoad,
         systemTemp,
+        sprinklerState,
+        zones,
+        toggleZoneSprinkler,
+        overallAlertLevel,
         smokeValue,
         flameValue,
         smokeDetected,
         flameDetected,
-        alerts
+        sensorNode,
+        aiFireDetected,
+        aiSmokeDetected,
+        aiHumanDetected,
+        aiConfidence,
+        aiBbox,
+        hailoStatus,
+        events,
+        fetchEvents,
+        toggleSprinkler,
+        triggerEmergencyStop,
+        autoScanActive,
+        setAutoScanActive,
+        notifications,
+        unreadCount,
+        markAsRead,
+        faceWatchActive,
+        toggleFaceWatch,
+        mqttConnected,
+        activeToast,
+        setActiveToast
     } = useSystem();
 
-    const cameras = [
-        { id: 1, name: "Front Gate" },
-        { id: 2, name: "Parking Lot" },
-        { id: 3, name: "Lobby" },
-        { id: 4, name: "Back Door" }
-    ];
+    // Local state variables
+    const [ipInput, setIpInput] = useState(raspberryPiIp);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [selectedEvent, setSelectedEvent] = useState(null);
+    const [eventLogs, setEventLogs] = useState([]);
+    const [isRefreshingEvents, setIsRefreshingEvents] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+
+    const itemsPerPage = 10;
+    const totalPages = Math.ceil(eventLogs.length / itemsPerPage);
+    const paginatedEvents = eventLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+    // Rotation state
+    const [rotation, setRotation] = useState(0);
+
+    const handleRotate = () => {
+        setRotation(prev => (prev + 90) % 360);
+    };
+
+    // Face database states
+    const [regName, setRegName] = useState("");
+    const [regRole, setRegRole] = useState("Operator");
+    const [regFile, setRegFile] = useState(null);
+    const [regMethod, setRegMethod] = useState("device_camera"); // "device_camera" | "gallery" | "cctv"
+    const [isRegistering, setIsRegistering] = useState(false);
+    const [regStatus, setRegStatus] = useState({ success: null, message: "" });
+    const [verResult, setVerResult] = useState(null);
+    const [isVerifying, setIsVerifying] = useState(false);
+    const [people, setPeople] = useState([]);
+    const [isLoadingPeople, setIsLoadingPeople] = useState(false);
+
+    // Settings local simulator states
+    const [simSmoke, setSimSmoke] = useState(12);
+    const [simFlame, setSimFlame] = useState(8);
+    const [simSmokeDetected, setSimSmokeDetected] = useState(false);
+    const [simFlameDetected, setSimFlameDetected] = useState(false);
+    const [simNode, setSimNode] = useState("Node-01");
+    const [isUpdatingSensors, setIsUpdatingSensors] = useState(false);
+
+    const [simAiFire, setSimAiFire] = useState(false);
+    const [simAiSmoke, setSimAiSmoke] = useState(false);
+    const [simAiHuman, setSimAiHuman] = useState(false);
+    const [simAiConfidence, setSimAiConfidence] = useState(0.85);
+    const [isTriggeringAI, setIsTriggeringAI] = useState(false);
+
+    // AI Bbox adjustments
+    const [simBboxX, setSimBboxX] = useState(408);
+    const [simBboxY, setSimBboxY] = useState(218);
+    const [simBboxW, setSimBboxW] = useState(180);
+    const [simBboxH, setSimBboxH] = useState(170);
+
+    // Scanner beam animation
+    const scanAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(scanAnim, {
+                    toValue: 1,
+                    duration: 4000,
+                    useNativeDriver: false,
+                }),
+                Animated.timing(scanAnim, {
+                    toValue: 0,
+                    duration: 4000,
+                    useNativeDriver: false,
+                })
+            ])
+        ).start();
+    }, [scanAnim]);
+
+    const scanLineTop = scanAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0%', '100%'],
+    });
+
+    // Sync input box when context IP updates
+    useEffect(() => {
+        setIpInput(raspberryPiIp);
+    }, [raspberryPiIp]);
+
+    // Local Event Logs Loading
+    const loadEventLogs = async (silent = false) => {
+        if (!silent) setIsRefreshingEvents(true);
+        try {
+            const res = await api.getEvents(50);
+            if (res.status === "success") {
+                setEventLogs(res.data);
+                setCurrentPage(1);
+                return res.data;
+            }
+        } catch (err) {
+            console.error("Failed to load events in mobile:", err);
+        } finally {
+            if (!silent) setIsRefreshingEvents(false);
+        }
+        return [];
+    };
+
+    // Handle notification click → navigate to event detail in Events tab
+    const handleNotificationClick = async (notification) => {
+        // 1. Close notification popup
+        setShowNotifications(false);
+
+        // 2. Mark as read
+        if (!notification.is_read) {
+            markAsRead(notification.id);
+        }
+
+        // 3. Switch to events tab
+        setActiveTab('events');
+
+        // 4. Load events and find matching event
+        const loadedEvents = await loadEventLogs(true);
+        const eventIndex = loadedEvents.findIndex(e => e.id === notification.event_id);
+
+        if (eventIndex !== -1) {
+            // 5. Calculate correct page and set it
+            const targetPage = Math.floor(eventIndex / itemsPerPage) + 1;
+            setCurrentPage(targetPage);
+
+            // 6. Open event detail modal
+            setSelectedEvent(loadedEvents[eventIndex]);
+        } else {
+            // Fallback: try to find by notification ID itself
+            const fallbackEvent = loadedEvents.find(e => e.id === notification.id);
+            if (fallbackEvent) {
+                const targetPage = Math.floor(loadedEvents.indexOf(fallbackEvent) / itemsPerPage) + 1;
+                setCurrentPage(targetPage);
+                setSelectedEvent(fallbackEvent);
+            }
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'events') {
+            loadEventLogs(false);
+        }
+    }, [activeTab]);
+
+    const loadPeople = useCallback(async () => {
+        setIsLoadingPeople(true);
+        try {
+            const res = await api.getPeople();
+            if (res && res.success) {
+                setPeople(res.data);
+            }
+        } catch (err) {
+            console.error("Failed to load registered people in mobile:", err);
+        } finally {
+            setIsLoadingPeople(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === 'faces') {
+            loadPeople();
+        }
+    }, [activeTab, loadPeople]);
+
+    const handleTakePhoto = async () => {
+        try {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+                setRegStatus({ success: false, message: "Yêu cầu quyền truy cập camera bị từ chối." });
+                return;
+            }
+
+            const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+                setRegFile({
+                    uri: asset.uri,
+                    name: asset.fileName || 'photo.jpg',
+                    type: 'image/jpeg'
+                });
+                setRegMethod("device_camera");
+                setRegStatus({ success: null, message: "" });
+            }
+        } catch (err) {
+            console.error("Take photo error:", err);
+            setRegStatus({ success: false, message: "Không thể mở camera thiết bị." });
+        }
+    };
+
+    const handlePickImage = async () => {
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+                setRegStatus({ success: false, message: "Yêu cầu quyền truy cập thư viện ảnh bị từ chối." });
+                return;
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+                setRegFile({
+                    uri: asset.uri,
+                    name: asset.fileName || 'gallery.jpg',
+                    type: 'image/jpeg'
+                });
+                setRegMethod("gallery");
+                setRegStatus({ success: null, message: "" });
+            }
+        } catch (err) {
+            console.error("Pick image error:", err);
+            setRegStatus({ success: false, message: "Không thể mở thư viện ảnh." });
+        }
+    };
+
+    const handleRegisterSubmit = async () => {
+        if (!regName) {
+            setRegStatus({ success: false, message: "Vui lòng nhập tên." });
+            return;
+        }
+        setIsRegistering(true);
+        setRegStatus({ success: null, message: "" });
+
+        try {
+            let res;
+            if (regMethod === 'cctv') {
+                res = await api.registerCameraFace(regName, regRole);
+            } else {
+                if (!regFile) {
+                    setRegStatus({ success: false, message: "Vui lòng chụp ảnh hoặc chọn ảnh từ thư viện." });
+                    setIsRegistering(false);
+                    return;
+                }
+                res = await api.registerFace(regName, regRole, regFile);
+            }
+
+            if (res && res.success) {
+                setRegStatus({ success: true, message: "Đăng ký gương mặt thành công!" });
+                setRegName("");
+                setRegFile(null);
+                loadPeople();
+            } else {
+                setRegStatus({ success: false, message: res?.message || "Đăng ký thất bại." });
+            }
+        } catch (err) {
+            console.error("Register face error:", err);
+            setRegStatus({ success: false, message: "Lỗi kết nối tới backend." });
+        } finally {
+            setIsRegistering(false);
+        }
+    };
+
+    const handleCameraVerify = async () => {
+        setIsVerifying(true);
+        setVerResult(null);
+        try {
+            const res = await api.matchCameraFace();
+            if (res && res.success) {
+                setVerResult(res);
+            } else {
+                alert(res?.message || "Không thể thực hiện đối khớp qua camera.");
+            }
+        } catch (err) {
+            console.error("Camera verify error:", err);
+            alert("Lỗi kết nối tới backend.");
+        } finally {
+            setIsVerifying(false);
+        }
+    };
+
+    const handleFileVerify = async (file) => {
+        if (!file) return;
+        setIsVerifying(true);
+        setVerResult(null);
+        try {
+            const res = await api.matchFaceImage(file);
+            if (res && res.success) {
+                setVerResult(res);
+            } else {
+                alert(res?.message || "Không tìm thấy gương mặt.");
+            }
+        } catch (err) {
+            console.error("File verify error:", err);
+            alert("Lỗi kết nối tới backend.");
+        } finally {
+            setIsVerifying(false);
+        }
+    };
+
+    // Bounding Box layout calculations
+    const showLive = isBackendConnected && isCameraOnline && activeCameraId === 1;
+    const isAlerting = overallAlertLevel !== "safe" || aiFireDetected || aiSmokeDetected || aiHumanDetected || flameDetected || smokeDetected;
+
+    const hasBbox = false; // aiBbox && aiBbox.length === 4;
+    const boxLeft = hasBbox ? (aiBbox[0] / 960) * 100 : 0;
+    const boxTop = hasBbox ? (aiBbox[1] / 540) * 100 : 0;
+    const boxWidth = hasBbox ? ((aiBbox[2] - aiBbox[0]) / 960) * 100 : 0;
+    const boxHeight = hasBbox ? ((aiBbox[3] - aiBbox[1]) / 540) * 100 : 0;
+
+    let targetClass = "SAFE";
+    let boxColor = colors.accentCyan;
+    if (aiFireDetected) {
+        targetClass = "FIRE";
+        boxColor = colors.accentRed;
+    } else if (aiSmokeDetected) {
+        targetClass = "SMOKE";
+        boxColor = colors.accentYellow;
+    } else if (aiHumanDetected) {
+        targetClass = "HUMAN";
+        boxColor = colors.accentCyan;
+    }
+
+    // Handlers for settings simulator
+    const handleUpdateSensors = async () => {
+        setIsUpdatingSensors(true);
+        try {
+            await api.updateSensors({
+                smokeDetected: simSmokeDetected,
+                flameDetected: simFlameDetected,
+                smokeValue: simSmoke,
+                flameValue: simFlame,
+                node: simNode
+            });
+            alert("IoT Sensor status synchronized with FastAPI!");
+            fetchEvents();
+        } catch (err) {
+            console.error(err);
+            alert("Connection error to backend.");
+        } finally {
+            setIsUpdatingSensors(false);
+        }
+    };
+
+    const handleTriggerAIDetect = async () => {
+        setIsTriggeringAI(true);
+        try {
+            const hasDetect = simAiFire || simAiSmoke || simAiHuman;
+            const res = await api.triggerAIDetect({
+                fire: simAiFire,
+                smoke: simAiSmoke,
+                human: simAiHuman,
+                confidence: parseFloat(simAiConfidence),
+                bbox: hasDetect ? [simBboxX, simBboxY, simBboxX + simBboxW, simBboxY + simBboxH] : null
+            });
+            alert(`AI Analysis trigger: ${res.risk_level} state registered.`);
+            fetchEvents();
+        } catch (err) {
+            console.error(err);
+            alert("Connection error to backend.");
+        } finally {
+            setIsTriggeringAI(false);
+        }
+    };
+
+    const handleResetAll = async () => {
+        setIsUpdatingSensors(true);
+        setIsTriggeringAI(true);
+        try {
+            await api.updateSensors({
+                smokeDetected: false,
+                flameDetected: false,
+                smokeValue: 12,
+                flameValue: 5,
+                node: simNode
+            });
+            await api.triggerAIDetect({
+                fire: false,
+                smoke: false,
+                human: false,
+                confidence: 0.0,
+                bbox: null
+            });
+            setSimSmoke(12);
+            setSimFlame(5);
+            setSimSmokeDetected(false);
+            setSimFlameDetected(false);
+            setSimAiFire(false);
+            setSimAiSmoke(false);
+            setSimAiHuman(false);
+            setSimAiConfidence(0.0);
+            setSimBboxX(408);
+            setSimBboxY(218);
+            setSimBboxW(180);
+            setSimBboxH(170);
+            alert("All simulated inputs set back to SAFE states.");
+            fetchEvents();
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsUpdatingSensors(false);
+            setIsTriggeringAI(false);
+        }
+    };
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.headerTitle}>FIREEYE MOBILE</Text>
-                    <Text style={styles.headerSubtitle}>Surveillance Control</Text>
-                </View>
-                <View style={styles.statusBox}>
-                    <View style={[styles.dot, styles.onlineDot]} />
-                    <Text style={styles.statusText}>{isCameraOnline ? "Dahua On" : "Dahua Off"}</Text>
-                </View>
-            </View>
-
-            {/* 2x2 Grid */}
-            <View style={styles.gridContainer}>
-                <View style={styles.row}>
-                    <CameraCard
-                        id={1}
-                        name="Front Gate"
-                        isActive={activeCameraId === 1}
-                        onSelect={() => setActiveCameraId(1)}
-                        isOnline={isCameraOnline}
-                    />
-                    <CameraCard
-                        id={2}
-                        name="Parking Lot"
-                        isActive={activeCameraId === 2}
-                        onSelect={() => setActiveCameraId(2)}
-                    />
-                </View>
-                <View style={styles.row}>
-                    <CameraCard
-                        id={3}
-                        name="Lobby"
-                        isActive={activeCameraId === 3}
-                        onSelect={() => setActiveCameraId(3)}
-                    />
-                    <CameraCard
-                        id={4}
-                        name="Back Door"
-                        isActive={activeCameraId === 4}
-                        onSelect={() => setActiveCameraId(4)}
-                    />
-                </View>
-            </View>
-
-            {/* PTZ Controller */}
-            <PTZController />
-
-            {/* IoT & System Health info */}
-            <View style={styles.infoSection}>
-                <View style={styles.sensorCard}>
-                    <Text style={styles.sectionHeader}>IoT Sensors</Text>
-                    <View style={styles.sensorGrid}>
-                        <View style={[styles.sensorTile, smokeDetected && styles.alarmTile]}>
-                            <Text style={styles.sensorLabel}>SMOKE</Text>
-                            <Text style={styles.sensorValue}>{smokeValue} ppm</Text>
-                            <Text style={[styles.sensorStatus, smokeDetected && styles.alarmText]}>
-                                {smokeDetected ? "ALARM" : "NORMAL"}
-                            </Text>
-                        </View>
-                        <View style={[styles.sensorTile, flameDetected && styles.alarmTile]}>
-                            <Text style={styles.sensorLabel}>FLAME</Text>
-                            <Text style={styles.sensorValue}>{flameValue}%</Text>
-                            <Text style={[styles.sensorStatus, flameDetected && styles.alarmText]}>
-                                {flameDetected ? "ALARM" : "NORMAL"}
-                            </Text>
-                        </View>
+        <View style={styles.container}>
+            {/* TOP BAR */}
+            <View style={styles.navbar}>
+                <View style={styles.brandRow}>
+                    <Image source={logoImg} style={styles.logoImage} />
+                    <View>
+                        <Text style={styles.brandTitle}>FireEye AI System</Text>
+                        <Text style={styles.brandSubtitle}>POWERED BY AI</Text>
                     </View>
                 </View>
 
-                {/* System Stats */}
-                <View style={styles.healthCard}>
-                    <Text style={styles.sectionHeader}>NPU Status</Text>
-                    <View style={styles.healthBox}>
-                        <View style={styles.healthRow}>
-                            <Text style={styles.healthLabel}>NPU Load:</Text>
-                            <Text style={styles.healthValue}>{npuLoad.toFixed(1)}%</Text>
-                        </View>
-                        <View style={styles.healthRow}>
-                            <Text style={styles.healthLabel}>Temp:</Text>
-                            <Text style={styles.healthValue}>{systemTemp.toFixed(1)}°C</Text>
-                        </View>
+                <View style={styles.navbarControls}>
+                    {/* Notification Bell with Badge */}
+                    <Pressable 
+                        style={styles.bellButton}
+                        onPress={() => setShowNotifications(true)}
+                    >
+                        <Text style={styles.bellIcon}>🔔</Text>
+                        {unreadCount > 0 && (
+                            <View style={styles.badgeCount}>
+                                <Text style={styles.badgeCountText}>{unreadCount}</Text>
+                            </View>
+                        )}
+                    </Pressable>
+
+                    {/* Status indicator */}
+                    <View style={styles.sysTelemetryPill}>
+                        <View style={[styles.dot, isBackendConnected ? styles.dotGreen : styles.dotRed]} />
+                        <Text style={styles.statusText}>{isBackendConnected ? "ONLINE" : "OFFLINE"}</Text>
                     </View>
+
+                    {/* Emergency Stop */}
+                    <Pressable 
+                        style={styles.btnEmergency}
+                        onPress={triggerEmergencyStop}
+                    >
+                        <Text style={styles.btnEmergencyText}>EMERGENCY STOP</Text>
+                    </Pressable>
                 </View>
             </View>
 
-            {/* Recent Alerts Feed */}
-            <View style={styles.alertsCard}>
-                <Text style={styles.sectionHeader}>Recent Alerts</Text>
-                <View style={styles.alertsList}>
-                    {alerts.map(alert => (
-                        <View key={alert.id} style={styles.alertItem}>
-                            <View style={[styles.alertIndicator, alert.level === 'high' && styles.alertIndicatorHigh]} />
-                            <View style={styles.alertContent}>
-                                <Text style={styles.alertTime}>[{alert.time}]</Text>
-                                <Text style={styles.alertDesc}>{alert.desc}</Text>
+
+            {/* MAIN RENDER WINDOW */}
+            {activeTab === 'dashboard' && (
+                <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+                    {/* SYSTEM STATUS TELEMETRY BANNER */}
+                    <View style={styles.systemStatsBanner}>
+                        <View style={styles.statBannerItem}>
+                            <Text style={styles.statBannerLabel}>SYS LOAD</Text>
+                            <Text style={[styles.statBannerValue, { color: isBackendConnected ? colors.accentGreen : colors.accentRed }]}>
+                                {isBackendConnected ? "ONLINE" : "OFFLINE"}
+                            </Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statBannerItem}>
+                            <Text style={styles.statBannerLabel}>NPU COMPUTE</Text>
+                            <Text style={styles.statBannerValue}>{npuLoad.toFixed(0)}%</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statBannerItem}>
+                            <Text style={styles.statBannerLabel}>CORE TEMP</Text>
+                            <Text style={styles.statBannerValue}>{systemTemp.toFixed(1)}°C</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statBannerItem}>
+                            <Text style={styles.statBannerLabel}>AI CORE</Text>
+                            <Text style={styles.statBannerValue}>HAILO-8L</Text>
+                        </View>
+                    </View>
+
+                    {/* CAMERA STAGE VIEWPORT (16:9) */}
+                    <View style={[styles.videoStageCard, isAlerting && showLive && styles.videoStageCardAlert]}>
+                        <View style={styles.videoStage}>
+                            {showLive ? (
+                                <View style={styles.liveStreamWrapper}>
+                                    {Platform.OS === 'android' ? (
+                                        <WebView
+                                            source={{ uri: api.getStreamUrl() }}
+                                            style={[
+                                                styles.streamFeedImage,
+                                                {
+                                                    transform: [
+                                                        { rotate: `${rotation}deg` },
+                                                        { scale: (rotation === 90 || rotation === 270) ? 0.5625 : 1 }
+                                                    ]
+                                                }
+                                            ]}
+                                            javaScriptEnabled={false}
+                                            scalesPageToFit={true}
+                                            scrollEnabled={false}
+                                            bounces={false}
+                                            overScrollMode="never"
+                                        />
+                                    ) : (
+                                        <Image
+                                            source={{ uri: `${api.getStreamUrl()}?t=${Date.now()}` }}
+                                            style={[
+                                                styles.streamFeedImage,
+                                                {
+                                                    transform: [
+                                                        { rotate: `${rotation}deg` },
+                                                        { scale: (rotation === 90 || rotation === 270) ? 0.5625 : 1 }
+                                                    ]
+                                                }
+                                            ]}
+                                            resizeMode="contain"
+                                        />
+                                    )}
+                                    <Pressable 
+                                        style={styles.hudRotateBtn}
+                                        onPress={handleRotate}
+                                    >
+                                        <Text style={styles.hudRotateBtnText}>🔄 ROTATE {rotation}°</Text>
+                                    </Pressable>
+                                    {/* YOLOv8 VISION HUD OVERLAY */}
+                                    <View style={styles.hudOverlay} pointerEvents="none">
+                                        {/* Bounding Box Drawing */}
+                                        {hasBbox && (
+                                            <View
+                                                style={[
+                                                    styles.hudTargetBox,
+                                                    {
+                                                        left: `${boxLeft}%`,
+                                                        top: `${boxTop}%`,
+                                                        width: `${boxWidth}%`,
+                                                        height: `${boxHeight}%`,
+                                                        borderColor: boxColor,
+                                                    }
+                                                ]}
+                                            >
+                                                <View style={[styles.hudTargetLabel, { backgroundColor: boxColor }]}>
+                                                    <View style={styles.hudAlertDot} />
+                                                    <Text style={styles.hudTargetText}>
+                                                        {targetClass}: {(aiConfidence * 100).toFixed(0)}%
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        )}
+
+                                        {/* Corner Brackets */}
+                                        <View style={[styles.bracket, styles.bracketTL]} />
+                                        <View style={[styles.bracket, styles.bracketTR]} />
+                                        <View style={[styles.bracket, styles.bracketBL]} />
+                                        <View style={[styles.bracket, styles.bracketBR]} />
+
+                                        {/* Telemetry info HUD overlay */}
+                                        <View style={styles.hudTelemetryHeader}>
+                                            <Text style={styles.hudTelemetryText}>DEV_CLASS: PI_5</Text>
+                                            <Text style={[styles.hudTelemetryText, isAlerting && styles.hudTelemetryAlertText]}>
+                                                {isAlerting ? "ALARM: ACTIVE" : "STATUS: SECURE"}
+                                            </Text>
+                                        </View>
+                                        
+                                        <View style={styles.hudTelemetryFooter}>
+                                            <Text style={styles.hudTelemetryText}>ACCEL: HAILO-8L ({hailoStatus.toUpperCase()})</Text>
+                                            <Text style={styles.hudTelemetryText}>FLOW: YOLOv8</Text>
+                                        </View>
+
+                                        {/* Scanner beam animation */}
+                                        <Animated.View style={[styles.scannerLine, isAlerting && styles.scannerLineDanger, { top: scanLineTop }]} />
+
+                                        {/* Crosshair */}
+                                        <View style={styles.crosshair}>
+                                            <View style={styles.crosshairCircle} />
+                                            <View style={styles.crosshairH} />
+                                            <View style={styles.crosshairV} />
+                                        </View>
+                                    </View>
+                                </View>
+                            ) : (
+                                <View style={styles.offlineFeed}>
+                                    <View style={styles.offlineDotPulse} />
+                                    <Text style={styles.offlineText}>CAMERA OFFLINE // SIM MODE</Text>
+                                    <Text style={styles.offlineTelemetryText}>RTSP STREAM NOT ATTACHED</Text>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+
+                    {/* CAMERA SELECT PANEL (Horizontal Scroll) */}
+                    <View style={styles.cameraRoster}>
+                        {['Dahua IP Camera'].map((name, idx) => {
+                            const cid = idx + 1;
+                            const isAct = activeCameraId === cid;
+                            return (
+                                <Pressable
+                                    key={name}
+                                    style={[styles.cameraThumbnailCard, isAct && styles.cameraThumbnailActive]}
+                                    onPress={() => setActiveCameraId(cid)}
+                                >
+                                    <Text style={[styles.cameraThumbLabel, isAct && styles.cameraThumbLabelActive]}>
+                                        CAM 0{cid}
+                                    </Text>
+                                    <Text style={styles.cameraThumbName}>{name}</Text>
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+
+                    {/* PTZ CAMERA CONTROLLER */}
+                    <PTZController />
+
+                     {/* ZONE STATUS MONITOR */}
+                    <View style={styles.zonesMonitorCard}>
+                        <Text style={styles.sectionTitle}>ZONE SECURITY MONITOR</Text>
+                        
+                        {[
+                            { id: 1, name: "Zone 01: Warehouse North", desc: "Main Storage Sector", defaultTemp: 38.5, defaultGas: 10 },
+                            { id: 2, name: "Zone 02: Loading Dock", desc: "Cargo Bays A-F", defaultTemp: 29.4, defaultGas: 12 },
+                            { id: 3, name: "Zone 03: Server Room", desc: "IT Infrastructure Node", defaultTemp: 21.8, defaultGas: 15 },
+                            { id: 4, name: "Zone 04: Office Suite", desc: "Administrative Wing", defaultTemp: 24.6, defaultGas: 8 },
+                        ].map((zone) => {
+                            const zData = zones[zone.id] || {};
+                            const temp = zData.temperature !== undefined ? zData.temperature : zone.defaultTemp;
+                            const gas = zData.gas !== undefined ? zData.gas : zone.defaultGas;
+                            const isPumpOn = zData.pump === "ON";
+                            
+                            // Determine alert level for this specific zone
+                            const isAlert = isPumpOn || gas > 300 || temp >= 50 || (zone.id === 1 && isAlerting);
+                            
+                            return (
+                                <View 
+                                    key={zone.id} 
+                                    style={[
+                                        styles.zoneCard, 
+                                        isAlert ? styles.zoneCardAlert : styles.zoneCardNormal
+                                    ]}
+                                >
+                                    <View style={styles.zoneHeader}>
+                                        <View>
+                                            <Text style={styles.zoneName}>{zone.name}</Text>
+                                            <Text style={styles.zoneDesc}>{zone.desc}</Text>
+                                        </View>
+                                        <View style={[
+                                            styles.zoneBadge, 
+                                            isAlert ? styles.zoneBadgeAlert : styles.zoneBadgeSafe
+                                        ]}>
+                                            <Text style={styles.zoneBadgeText}>
+                                                {isAlert ? "ALERT" : "SAFE"}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    
+                                    <View style={styles.zoneTelemetryRow}>
+                                        <View style={styles.zoneTelemetryPill}>
+                                            <Text style={styles.zonePillLabel}>TEMPERATURE</Text>
+                                            <Text style={styles.zonePillValue}>{temp.toFixed(1)}°C</Text>
+                                        </View>
+                                        <View style={styles.zoneTelemetryPill}>
+                                            <Text style={styles.zonePillLabel}>GAS / SMOKE</Text>
+                                            <Text style={styles.zonePillValue}>{gas} ppm</Text>
+                                        </View>
+                                    </View>
+
+                                    <Pressable 
+                                        style={({ pressed }) => [
+                                            styles.btnSprinkler, 
+                                            isPumpOn && styles.btnSprinklerActive,
+                                            { opacity: pressed ? 0.8 : 0.95, marginTop: 8 }
+                                        ]}
+                                        onPress={() => toggleZoneSprinkler(zone.id)}
+                                    >
+                                        <Text style={styles.btnSprinklerText}>
+                                            {isPumpOn 
+                                                ? `💧 ZONE 0${zone.id} PUMP ACTIVE (ON)` 
+                                                : `💤 ZONE 0${zone.id} PUMP STANDBY (OFF)`
+                                            }
+                                        </Text>
+                                    </Pressable>
+                                </View>
+                            );
+                        })}
+                    </View>
+                </ScrollView>
+            )}
+
+            {activeTab === 'faces' && (
+                <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+                    {/* Face Watcher service controller */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>REAL-TIME FACE WATCHER SERVICE</Text>
+                        <View style={styles.switchRow}>
+                            <View style={{ flex: 1, marginRight: 10 }}>
+                                <Text style={styles.switchLabel}>AUTO FACE RECOGNITION</Text>
+                                <Text style={styles.settingsDesc}>Scan camera frames every 3s for matching</Text>
+                            </View>
+                            <View 
+                                style={[styles.toggleBtn, faceWatchActive ? styles.toggleBtnOn : styles.toggleBtnOff, { opacity: 0.9 }]}
+                            >
+                                <Text style={styles.toggleBtnText}>{faceWatchActive ? "RUNNING" : "STOPPED"}</Text>
                             </View>
                         </View>
-                    ))}
+                        <Text style={styles.fieldLabel}>
+                            Service Status: <Text style={{ color: faceWatchActive ? colors.accentGreen : colors.accentRed, fontWeight: 'bold' }}>{faceWatchActive ? 'RUNNING' : 'STOPPED'}</Text>
+                        </Text>
+                    </View>
+
+                    {/* Register Face Form Card */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>REGISTER NEW PERSONNEL</Text>
+                        <Text style={styles.settingsDesc}>Add new authorized face to the database</Text>
+                        
+                        <View style={{ marginTop: 12, gap: 10 }}>
+                            {/* Input Name */}
+                            <View>
+                                <Text style={styles.fieldLabel}>FULL NAME</Text>
+                                <TextInput
+                                    style={[styles.ipInput, { flex: 0, width: '100%' }]}
+                                    value={regName}
+                                    onChangeText={setRegName}
+                                    placeholder="Enter employee or user name"
+                                    placeholderTextColor={colors.textMuted}
+                                />
+                            </View>
+
+                            {/* Input Role */}
+                            <View>
+                                <Text style={styles.fieldLabel}>ROLE / PERMISSION</Text>
+                                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                                    {['Operator', 'Security', 'Admin', 'Guest'].map((role) => (
+                                        <Pressable
+                                            key={role}
+                                            style={{
+                                                paddingHorizontal: 12,
+                                                paddingVertical: 6,
+                                                borderRadius: 4,
+                                                borderWidth: 1,
+                                                borderColor: regRole === role ? colors.accentCyan : colors.borderColor,
+                                                backgroundColor: regRole === role ? 'rgba(230, 28, 31, 0.1)' : 'transparent'
+                                            }}
+                                            onPress={() => setRegRole(role)}
+                                        >
+                                            <Text style={{
+                                                fontSize: 10,
+                                                fontWeight: 'bold',
+                                                color: regRole === role ? colors.accentCyan : colors.textSecondary,
+                                                fontFamily: 'monospace'
+                                            }}>{role.toUpperCase()}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Select Capture Method */}
+                            <View style={{ marginTop: 6 }}>
+                                <Text style={styles.fieldLabel}>CAPTURE METHOD</Text>
+                                <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                                    {[
+                                        { id: 'device_camera', label: 'PHONE CAM' },
+                                        { id: 'gallery', label: 'GALLERY' },
+                                        { id: 'cctv', label: 'CCTV SNAPSHOT' }
+                                    ].map((method) => (
+                                        <Pressable
+                                            key={method.id}
+                                            style={{
+                                                flex: 1,
+                                                paddingVertical: 8,
+                                                borderRadius: 4,
+                                                borderWidth: 1,
+                                                borderColor: regMethod === method.id ? colors.accentCyan : colors.borderColor,
+                                                backgroundColor: regMethod === method.id ? 'rgba(230, 28, 31, 0.1)' : 'transparent',
+                                                alignItems: 'center',
+                                            }}
+                                            onPress={() => {
+                                                setRegMethod(method.id);
+                                                if (method.id === 'cctv') {
+                                                    setRegFile(null); // Clear local file if CCTV is chosen
+                                                }
+                                            }}
+                                        >
+                                            <Text style={{
+                                                fontSize: 9,
+                                                fontWeight: 'bold',
+                                                color: regMethod === method.id ? colors.accentCyan : colors.textMuted,
+                                                fontFamily: 'monospace'
+                                            }}>{method.label}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Method Specific UI */}
+                            {regMethod === 'cctv' ? (
+                                <View style={{
+                                    padding: 10,
+                                    borderRadius: 4,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                                    borderWidth: 1,
+                                    borderColor: colors.borderColor,
+                                    alignItems: 'center',
+                                    marginVertical: 4
+                                }}>
+                                    <Text style={{ fontSize: 9, color: colors.accentCyan, fontWeight: 'bold', fontFamily: 'monospace', textAlign: 'center' }}>
+                                        📹 WILL CAPTURE IMAGE DIRECTLY FROM CCTV/DAHUA CAMERA SNAPSHOT
+                                    </Text>
+                                    <Text style={{ fontSize: 8, color: colors.textMuted, fontFamily: 'monospace', textAlign: 'center', marginTop: 2 }}>
+                                        Make sure the person is facing the security camera before submitting.
+                                    </Text>
+                                </View>
+                            ) : (
+                                <View style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 10,
+                                    padding: 10,
+                                    borderRadius: 4,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                                    borderWidth: 1,
+                                    borderColor: colors.borderColor,
+                                    marginVertical: 4
+                                }}>
+                                    {regFile ? (
+                                        <Image
+                                            source={{ uri: regFile.uri }}
+                                            style={{ width: 45, height: 45, borderRadius: 4, borderWidth: 1, borderColor: colors.accentCyan }}
+                                            resizeMode="cover"
+                                        />
+                                    ) : (
+                                        <View style={{
+                                            width: 45,
+                                            height: 45,
+                                            borderRadius: 4,
+                                            backgroundColor: '#f1f5f9',
+                                            borderWidth: 1,
+                                            borderColor: colors.borderColor,
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}>
+                                            <Text style={{ fontSize: 16 }}>👤</Text>
+                                        </View>
+                                    )}
+                                    <View style={{ flex: 1, gap: 4 }}>
+                                        <Text style={{ fontSize: 9, color: colors.textSecondary, fontFamily: 'monospace' }} numberOfLines={1}>
+                                            {regFile ? `File: ${regFile.name}` : 'No image captured yet'}
+                                        </Text>
+                                        <Pressable
+                                            style={{
+                                                alignSelf: 'flex-start',
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 5,
+                                                borderRadius: 3,
+                                                backgroundColor: colors.accentCyan,
+                                            }}
+                                            onPress={regMethod === 'device_camera' ? handleTakePhoto : handlePickImage}
+                                        >
+                                            <Text style={{ fontSize: 8, color: '#ffffff', fontWeight: '900', fontFamily: 'monospace' }}>
+                                                {regMethod === 'device_camera' ? '📸 LAUNCH CAMERA' : '🖼️ BROWSE GALLERY'}
+                                            </Text>
+                                        </Pressable>
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Status indicator */}
+                            {regStatus.message ? (
+                                <Text style={{
+                                    fontSize: 9,
+                                    color: regStatus.success ? colors.accentGreen : colors.accentRed,
+                                    fontWeight: 'bold',
+                                    fontFamily: 'monospace',
+                                    textAlign: 'center',
+                                    marginVertical: 2
+                                }}>
+                                    {regStatus.message.toUpperCase()}
+                                </Text>
+                            ) : null}
+
+                            {/* Submit Button */}
+                            <Pressable
+                                style={({ pressed }) => [
+                                    {
+                                        backgroundColor: isRegistering ? '#e2e8f0' : colors.accentCyan,
+                                        paddingVertical: 10,
+                                        borderRadius: 4,
+                                        alignItems: 'center',
+                                        marginTop: 4,
+                                        opacity: pressed ? 0.8 : 1
+                                    }
+                                ]}
+                                onPress={handleRegisterSubmit}
+                                disabled={isRegistering}
+                            >
+                                {isRegistering ? (
+                                    <ActivityIndicator size="small" color="#ffffff" />
+                                ) : (
+                                    <Text style={{
+                                        color: '#ffffff',
+                                        fontSize: 10,
+                                        fontWeight: 'bold',
+                                        fontFamily: 'monospace'
+                                    }}>SUBMIT REGISTER FACE</Text>
+                                )}
+                            </Pressable>
+                        </View>
+                    </View>
+
+                    {/* Face verification HUD */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>FACE VERIFICATION HUD (READ ONLY)</Text>
+                        
+                        {/* Verification Image Preview with Bounding Box overlays */}
+                        {verResult ? (
+                            <View style={styles.verificationResultBox}>
+                                <Text style={styles.verificationResultTitle}>
+                                    LAST DETECTED FACES ({verResult.faces_detected} DETECTED)
+                                </Text>
+                                
+                                {verResult.snapshot && (
+                                    <View style={styles.verificationPhotoPane}>
+                                        <Image 
+                                            source={{ uri: `${api.getBaseUrl()}${verResult.snapshot}` }} 
+                                            style={styles.verificationImage}
+                                            resizeMode="cover"
+                                        />
+                                        
+                                        {/* Overlay bounding boxes */}
+                                        {verResult.results.map((face, index) => {
+                                            if (!face.bbox) return null;
+                                            const [x1, y1, x2, y2] = face.bbox;
+                                            const boxL = (x1 / 960) * 100;
+                                            const boxT = (y1 / 540) * 100;
+                                            const boxW = ((x2 - x1) / 960) * 100;
+                                            const boxH = ((y2 - y1) / 540) * 100;
+                                            const isMatched = face.matched;
+                                            const strokeColor = isMatched ? colors.accentCyan : colors.accentRed;
+                                            
+                                            return (
+                                                <View
+                                                    key={index}
+                                                    style={{
+                                                        position: 'absolute',
+                                                        borderWidth: 2,
+                                                        borderColor: strokeColor,
+                                                        left: `${boxL}%`,
+                                                        top: `${boxT}%`,
+                                                        width: `${boxW}%`,
+                                                        height: `${boxH}%`,
+                                                    }}
+                                                >
+                                                    <View style={{
+                                                        position: 'absolute',
+                                                        top: -12,
+                                                        left: -2,
+                                                        backgroundColor: strokeColor,
+                                                        paddingHorizontal: 3,
+                                                        paddingVertical: 1,
+                                                        borderRadius: 2,
+                                                    }}>
+                                                        <Text style={{
+                                                            color: '#000',
+                                                            fontWeight: '900',
+                                                            fontSize: 6,
+                                                            fontFamily: 'monospace'
+                                                        }}>
+                                                            {face.name} {(face.confidence * 100).toFixed(0)}%
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            );
+                                        })}
+                                    </View>
+                                )}
+
+                                <View style={{ marginTop: 8, gap: 4 }}>
+                                    {verResult.results.map((face, idx) => (
+                                        <View
+                                            key={idx}
+                                            style={[
+                                                styles.verResultRow,
+                                                { borderLeftColor: face.matched ? colors.accentCyan : colors.accentRed }
+                                            ]}
+                                        >
+                                            <Text style={styles.verResultText}>
+                                                {face.name} ({face.role || 'N/A'})
+                                            </Text>
+                                            <Text style={[styles.verResultStatus, { color: face.matched ? colors.accentCyan : colors.accentRed }]}>
+                                                {face.matched ? 'AUTHORIZED' : 'UNKNOWN'} ({(face.confidence * 100).toFixed(0)}%)
+                                            </Text>
+                                        </View>
+                                    ))}
+                                    {verResult.results.length === 0 && (
+                                        <Text style={{ fontSize: 9, color: colors.accentRed, fontFamily: 'monospace', textAlign: 'center' }}>
+                                            NO FACES DETECTED IN CAMERA SCOPE
+                                        </Text>
+                                    )}
+                                </View>
+                            </View>
+                        ) : (
+                            <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                                <Text style={{ fontSize: 9, color: colors.textMuted, fontFamily: 'monospace' }}>
+                                    NO LIVE DETECTION DATA RECEIVED YET
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+
+
+
+                    {/* Registered personnel roster database */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>REGISTERED PERSONNEL DATABASE</Text>
+                        
+                        {isLoadingPeople ? (
+                            <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                                <ActivityIndicator size="small" color={colors.accentCyan} />
+                                <Text style={{ fontSize: 9, color: colors.textSecondary, fontFamily: 'monospace', marginTop: 4 }}>
+                                    QUERYING SQL SECURE ROSTER...
+                                </Text>
+                            </View>
+                        ) : (
+                            <View style={styles.rosterContainer}>
+                                {people.map(person => (
+                                    <View key={person.id} style={styles.rosterItemCard}>
+                                        <View style={styles.rosterAvatarWrapper}>
+                                            {person.avatar_path ? (
+                                                <Image 
+                                                    source={{ uri: `${api.getBaseUrl()}${person.avatar_path}` }}
+                                                    style={styles.rosterAvatar}
+                                                    resizeMode="cover"
+                                                />
+                                            ) : (
+                                                <View style={styles.rosterAvatarFallback}>
+                                                    <Text style={styles.rosterAvatarFallbackText}>
+                                                        {person.name.substring(0, 2).toUpperCase()}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                        <Text style={styles.rosterItemName} numberOfLines={1}>
+                                            {person.name}
+                                        </Text>
+                                        <Text style={styles.rosterItemRole} numberOfLines={1}>
+                                            {person.role}
+                                        </Text>
+                                    </View>
+                                ))}
+                                {people.length === 0 && (
+                                    <Text style={{ fontSize: 9, fontStyle: 'italic', color: colors.textMuted, textAlign: 'center', width: '100%' }}>
+                                        Roster empty. Register personnel using the form.
+                                    </Text>
+                                )}
+                            </View>
+                        )}
+                    </View>
+                </ScrollView>
+            )}
+
+            {activeTab === 'events' && (
+                <View style={styles.subScreenContainer}>
+                    <View style={styles.subScreenHeader}>
+                        <Text style={styles.subScreenTitle}>SECURITY EVENT JOURNAL</Text>
+                        <Pressable 
+                            style={styles.refreshBtn}
+                            onPress={() => loadEventLogs(false)}
+                            disabled={isRefreshingEvents}
+                        >
+                            {isRefreshingEvents ? (
+                                <ActivityIndicator size="small" color={colors.accentCyan} />
+                            ) : (
+                                <Text style={styles.refreshBtnText}>REFRESH</Text>
+                            )}
+                        </Pressable>
+                    </View>
+
+                    {isRefreshingEvents && eventLogs.length === 0 ? (
+                        <View style={styles.loadingWrapper}>
+                            <ActivityIndicator size="large" color={colors.accentCyan} />
+                            <Text style={styles.loadingText}>QUERYING SQL SECURE DATABASE...</Text>
+                        </View>
+                    ) : (
+                        <>
+                            <ScrollView style={styles.logsList}>
+                                {paginatedEvents.map((item) => (
+                                    <Pressable 
+                                        key={item.id} 
+                                        style={styles.logCard}
+                                        onPress={() => setSelectedEvent(item)}
+                                    >
+                                        <View style={styles.logCardTop}>
+                                            <Text style={styles.logId}>#{item.id}</Text>
+                                            <Text style={styles.logTime}>
+                                                {item.created_at?.replace('T', ' ').substring(11, 19)}
+                                            </Text>
+                                            <View style={[
+                                                styles.logRiskBadge,
+                                                item.risk_level === 'CRITICAL' || item.risk_level === 'HIGH' || item.risk_level === 'EMERGENCY'
+                                                    ? styles.logRiskAlert : styles.logRiskSafe
+                                            ]}>
+                                                <Text style={styles.logRiskText}>{item.risk_level}</Text>
+                                            </View>
+                                        </View>
+                                        <Text style={styles.logMessage}>{item.message}</Text>
+                                        <View style={styles.logCardBottom}>
+                                            <Text style={styles.logMeta}>SRC: {item.source}</Text>
+                                            {item.snapshot_path ? (
+                                                <Text style={styles.viewFrameText}>VIEW IMAGE SNAPSHOT</Text>
+                                            ) : (
+                                                <Text style={styles.noMediaText}>NO MEDIA</Text>
+                                            )}
+                                        </View>
+                                    </Pressable>
+                                ))}
+                                {eventLogs.length === 0 && (
+                                    <Text style={styles.emptyLogsText}>
+                                        No threat logs found in database. System secure.
+                                    </Text>
+                                )}
+                            </ScrollView>
+
+                            {/* Pagination Controls */}
+                            {eventLogs.length > 0 && (
+                                <View style={styles.paginationContainer}>
+                                    <Pressable
+                                        style={[styles.paginationBtn, currentPage === 1 && styles.paginationBtnDisabled]}
+                                        disabled={currentPage === 1}
+                                        onPress={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                    >
+                                        <Text style={styles.paginationBtnText}>&larr; PREV</Text>
+                                    </Pressable>
+                                    <Text style={styles.paginationText}>
+                                        PAGE {currentPage} OF {totalPages || 1}
+                                    </Text>
+                                    <Pressable
+                                        style={[styles.paginationBtn, (currentPage === totalPages || totalPages === 0) && styles.paginationBtnDisabled]}
+                                        disabled={currentPage === totalPages || totalPages === 0}
+                                        onPress={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                    >
+                                        <Text style={styles.paginationBtnText}>NEXT &rarr;</Text>
+                                    </Pressable>
+                                </View>
+                            )}
+                        </>
+                    )}
                 </View>
+            )}
+
+            {activeTab === 'settings' && (
+                <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+                    {/* PI BACKEND CONNECTIONS IP */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>RASPBERRY PI IP CONFIG</Text>
+                        <Text style={styles.settingsDesc}>Specify IP address of backend host</Text>
+                        <View style={styles.ipConfigRow}>
+                            <TextInput 
+                                style={styles.ipInput}
+                                value={ipInput}
+                                onChangeText={setIpInput}
+                                placeholder="e.g. 192.168.1.100"
+                                placeholderTextColor={colors.textMuted}
+                                keyboardType="numeric"
+                            />
+                            <Pressable 
+                                style={styles.ipSaveBtn}
+                                onPress={() => {
+                                    setRaspberryPiIp(ipInput);
+                                    alert("Backend endpoint configured.");
+                                }}
+                            >
+                                <Text style={styles.ipSaveBtnText}>SAVE</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+
+                    {/* IoT SENSORS HARDWARE SIMULATOR */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>IoT HARDWARE EMULATOR</Text>
+
+                        {/* Node ID */}
+                        <Text style={styles.fieldLabel}>NODE IDENTIFIER</Text>
+                        <TextInput 
+                            style={styles.textField}
+                            value={simNode}
+                            onChangeText={setSimNode}
+                        />
+
+                        {/* Smoke level Adjuster */}
+                        <Text style={styles.fieldLabel}>SMOKE LEVEL: {simSmoke} ppm</Text>
+                        <View style={styles.adjusterRow}>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimSmoke(Math.max(0, simSmoke - 20))}>
+                                <Text style={styles.adjusterBtnText}>-20</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimSmoke(Math.max(0, simSmoke - 1))}>
+                                <Text style={styles.adjusterBtnText}>-1</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimSmoke(Math.min(800, simSmoke + 1))}>
+                                <Text style={styles.adjusterBtnText}>+1</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimSmoke(Math.min(800, simSmoke + 20))}>
+                                <Text style={styles.adjusterBtnText}>+20</Text>
+                            </Pressable>
+                        </View>
+
+                        {/* Flame spectrum Adjuster */}
+                        <Text style={styles.fieldLabel}>FLAME LEVEL: {simFlame}%</Text>
+                        <View style={styles.adjusterRow}>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimFlame(Math.max(0, simFlame - 10))}>
+                                <Text style={styles.adjusterBtnText}>-10</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimFlame(Math.max(0, simFlame - 1))}>
+                                <Text style={styles.adjusterBtnText}>-1</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimFlame(Math.min(100, simFlame + 1))}>
+                                <Text style={styles.adjusterBtnText}>+1</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimFlame(Math.min(100, simFlame + 10))}>
+                                <Text style={styles.adjusterBtnText}>+10</Text>
+                            </Pressable>
+                        </View>
+
+                        {/* Alarms switches */}
+                        <View style={styles.switchRow}>
+                            <Text style={styles.switchLabel}>SMOKE ALARM THRESHOLD</Text>
+                            <Pressable 
+                                style={[styles.toggleBtn, simSmokeDetected ? styles.toggleBtnOn : styles.toggleBtnOff]}
+                                onPress={() => setSimSmokeDetected(!simSmokeDetected)}
+                            >
+                                <Text style={styles.toggleBtnText}>{simSmokeDetected ? "ALARM" : "SAFE"}</Text>
+                            </Pressable>
+                        </View>
+
+                        <View style={styles.switchRow}>
+                            <Text style={styles.switchLabel}>FLAME ALARM THRESHOLD</Text>
+                            <Pressable 
+                                style={[styles.toggleBtn, simFlameDetected ? styles.toggleBtnOn : styles.toggleBtnOff]}
+                                onPress={() => setSimFlameDetected(!simFlameDetected)}
+                            >
+                                <Text style={styles.toggleBtnText}>{simFlameDetected ? "ALARM" : "SAFE"}</Text>
+                            </Pressable>
+                        </View>
+
+                        <Pressable 
+                            style={styles.submitBtn}
+                            onPress={handleUpdateSensors}
+                            disabled={isUpdatingSensors}
+                        >
+                            {isUpdatingSensors ? (
+                                <ActivityIndicator size="small" color={colors.bgDeep} />
+                            ) : (
+                                <Text style={styles.submitBtnText}>SYNC HARDWARE STATE</Text>
+                            )}
+                        </Pressable>
+                    </View>
+
+                    {/* YOLOv8 AI CORE INJECTOR */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>YOLOv8 AI CORE INJECTOR</Text>
+
+                        {/* Targets selection */}
+                        <View style={styles.switchRow}>
+                            <Text style={styles.switchLabel}>FIRE DETECTED</Text>
+                            <Pressable 
+                                style={[styles.toggleBtn, simAiFire ? styles.toggleBtnOn : styles.toggleBtnOff]}
+                                onPress={() => setSimAiFire(!simAiFire)}
+                            >
+                                <Text style={styles.toggleBtnText}>{simAiFire ? "DETECTED" : "CLEAR"}</Text>
+                            </Pressable>
+                        </View>
+
+                        <View style={styles.switchRow}>
+                            <Text style={styles.switchLabel}>SMOKE CLOUD DETECTED</Text>
+                            <Pressable 
+                                style={[styles.toggleBtn, simAiSmoke ? styles.toggleBtnOn : styles.toggleBtnOff]}
+                                onPress={() => setSimAiSmoke(!simAiSmoke)}
+                            >
+                                <Text style={styles.toggleBtnText}>{simAiSmoke ? "DETECTED" : "CLEAR"}</Text>
+                            </Pressable>
+                        </View>
+
+                        <View style={styles.switchRow}>
+                            <Text style={styles.switchLabel}>HUMAN DETECTED</Text>
+                            <Pressable 
+                                style={[styles.toggleBtn, simAiHuman ? styles.toggleBtnOn : styles.toggleBtnOff]}
+                                onPress={() => setSimAiHuman(!simAiHuman)}
+                            >
+                                <Text style={styles.toggleBtnText}>{simAiHuman ? "DETECTED" : "CLEAR"}</Text>
+                            </Pressable>
+                        </View>
+
+                        {/* Confidence score Adjuster */}
+                        <Text style={styles.fieldLabel}>CONFIDENCE SCORE: {(simAiConfidence * 100).toFixed(0)}%</Text>
+                        <View style={styles.adjusterRow}>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimAiConfidence(Math.max(0, simAiConfidence - 0.05))}>
+                                <Text style={styles.adjusterBtnText}>-5%</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimAiConfidence(Math.max(0, simAiConfidence - 0.01))}>
+                                <Text style={styles.adjusterBtnText}>-1%</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimAiConfidence(Math.min(1.0, simAiConfidence + 0.01))}>
+                                <Text style={styles.adjusterBtnText}>+1%</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimAiConfidence(Math.min(1.0, simAiConfidence + 0.05))}>
+                                <Text style={styles.adjusterBtnText}>+5%</Text>
+                            </Pressable>
+                        </View>
+
+                        {/* Bbox coordinates adjuster */}
+                        <Text style={styles.fieldLabel}>BBOX ADJUSTERS (960x540 Frame)</Text>
+                        
+                        <Text style={styles.subFieldLabel}>LEFT (X): {simBboxX}px</Text>
+                        <View style={styles.adjusterRow}>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxX(Math.max(0, simBboxX - 50))}>
+                                <Text style={styles.adjusterBtnText}>-50</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxX(Math.max(0, simBboxX - 5))}>
+                                <Text style={styles.adjusterBtnText}>-5</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxX(Math.min(960, simBboxX + 5))}>
+                                <Text style={styles.adjusterBtnText}>+5</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxX(Math.min(960, simBboxX + 50))}>
+                                <Text style={styles.adjusterBtnText}>+50</Text>
+                            </Pressable>
+                        </View>
+
+                        <Text style={styles.subFieldLabel}>TOP (Y): {simBboxY}px</Text>
+                        <View style={styles.adjusterRow}>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxY(Math.max(0, simBboxY - 50))}>
+                                <Text style={styles.adjusterBtnText}>-50</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxY(Math.max(0, simBboxY - 5))}>
+                                <Text style={styles.adjusterBtnText}>-5</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxY(Math.min(540, simBboxY + 5))}>
+                                <Text style={styles.adjusterBtnText}>+5</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxY(Math.min(540, simBboxY + 50))}>
+                                <Text style={styles.adjusterBtnText}>+50</Text>
+                            </Pressable>
+                        </View>
+
+                        <Text style={styles.subFieldLabel}>WIDTH: {simBboxW}px</Text>
+                        <View style={styles.adjusterRow}>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxW(Math.max(20, simBboxW - 10))}>
+                                <Text style={styles.adjusterBtnText}>-10</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxW(Math.min(500, simBboxW + 10))}>
+                                <Text style={styles.adjusterBtnText}>+10</Text>
+                            </Pressable>
+                        </View>
+
+                        <Text style={styles.subFieldLabel}>HEIGHT: {simBboxH}px</Text>
+                        <View style={styles.adjusterRow}>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxH(Math.max(20, simBboxH - 10))}>
+                                <Text style={styles.adjusterBtnText}>-10</Text>
+                            </Pressable>
+                            <Pressable style={styles.adjusterBtn} onPress={() => setSimBboxH(Math.min(500, simBboxH + 10))}>
+                                <Text style={styles.adjusterBtnText}>+10</Text>
+                            </Pressable>
+                        </View>
+
+                        <Pressable 
+                            style={styles.submitBtn}
+                            onPress={handleTriggerAIDetect}
+                            disabled={isTriggeringAI}
+                        >
+                            {isTriggeringAI ? (
+                                <ActivityIndicator size="small" color={colors.bgDeep} />
+                            ) : (
+                                <Text style={styles.submitBtnText}>TRIGGER AI ALERT STATE</Text>
+                            )}
+                        </Pressable>
+
+                        <Pressable 
+                            style={styles.resetBtn}
+                            onPress={handleResetAll}
+                        >
+                            <Text style={styles.resetBtnText}>RESET ALL SIMULATORS</Text>
+                        </Pressable>
+                    </View>
+
+                    {/* FACE WATCH SERVICE */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>FACE WATCH SERVICE</Text>
+                        <View style={styles.switchRow}>
+                            <View>
+                                <Text style={styles.switchLabel}>AUTO FACE RECOGNITION</Text>
+                                <Text style={styles.patrolDesc}>Scan frames every 3s for matching</Text>
+                            </View>
+                            <Pressable 
+                                style={[styles.toggleBtn, faceWatchActive ? styles.toggleBtnOn : styles.toggleBtnOff]}
+                                onPress={toggleFaceWatch}
+                            >
+                                <Text style={styles.toggleBtnText}>{faceWatchActive ? "RUNNING" : "STOPPED"}</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+
+                    {/* MQTT HEALTH BADGE */}
+                    <View style={styles.settingsCard}>
+                        <Text style={styles.settingsTitle}>MQTT BROKER HEALTH</Text>
+                        <View style={styles.switchRow}>
+                            <Text style={styles.switchLabel}>Broker Link Status:</Text>
+                            <View style={[styles.badge, mqttConnected ? styles.badgeActive : styles.badgeLocked]}>
+                                <Text style={styles.badgeText}>{mqttConnected ? "CONNECTED" : "OFFLINE"}</Text>
+                            </View>
+                        </View>
+                    </View>
+                </ScrollView>
+            )}
+
+            {/* TAB SELECTOR AT THE BOTTOM */}
+            <View style={styles.tabBar}>
+                {['dashboard', 'faces', 'events', 'settings'].map(tab => (
+                    <Pressable
+                        key={tab}
+                        style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
+                        onPress={() => setActiveTab(tab)}
+                    >
+                        <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                            {tab === 'faces' ? 'FACE DB' : tab.toUpperCase()}
+                        </Text>
+                    </Pressable>
+                ))}
             </View>
-        </ScrollView>
+
+            {/* NOTIFICATIONS DROPDOWN MODAL */}
+            <Modal
+                visible={showNotifications}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowNotifications(false)}
+            >
+                <Pressable 
+                    style={styles.modalOverlay}
+                    onPress={() => setShowNotifications(false)}
+                >
+                    <View style={styles.notificationsModalContent} onStartShouldSetResponder={() => true}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>THREAT DETECT LOGS</Text>
+                            <Pressable onPress={() => setShowNotifications(false)}>
+                                <Text style={styles.closeModalText}>✕</Text>
+                            </Pressable>
+                        </View>
+                        <ScrollView style={styles.notificationsScroll}>
+                            {notifications.length === 0 ? (
+                                <Text style={styles.emptyNotifications}>
+                                    No threat logs recorded. System secure.
+                                </Text>
+                            ) : (
+                                notifications.map((item) => (
+                                    <Pressable 
+                                        key={item.id} 
+                                        style={[
+                                            styles.notificationCard, 
+                                            item.is_read ? styles.notifRead : styles.notifUnread
+                                        ]}
+                                        onPress={() => handleNotificationClick(item)}
+                                    >
+                                        <View style={styles.notifTop}>
+                                            <Text style={styles.notifTime}>
+                                                {item.created_at?.replace('T', ' ').substring(11, 19)}
+                                            </Text>
+                                            <Text style={styles.notifRisk}>{item.risk_level}</Text>
+                                        </View>
+                                        <Text style={styles.notifMessage}>{item.message}</Text>
+                                        
+                                        {!item.is_read && (
+                                            <Pressable 
+                                                style={styles.notifReadBtn}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    markAsRead(item.id);
+                                                }}
+                                            >
+                                                <Text style={styles.notifReadBtnText}>Mark as Read</Text>
+                                            </Pressable>
+                                        )}
+                                    </Pressable>
+                                ))
+                            )}
+                        </ScrollView>
+                    </View>
+                </Pressable>
+            </Modal>
+
+            {/* EVENT DETAIL VIEW SNAPSHOT MODAL */}
+            <Modal
+                visible={selectedEvent !== null}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setSelectedEvent(null)}
+            >
+                <Pressable 
+                    style={styles.modalOverlay}
+                    onPress={() => setSelectedEvent(null)}
+                >
+                    {selectedEvent && (
+                        <View style={styles.eventDetailContent} onStartShouldSetResponder={() => true}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>
+                                    LOG SCOPE SCOURCE [#{selectedEvent.id}]
+                                </Text>
+                                <Pressable onPress={() => setSelectedEvent(null)}>
+                                    <Text style={styles.closeModalText}>✕</Text>
+                                </Pressable>
+                            </View>
+
+                            {selectedEvent.snapshot_path ? (
+                                <Image
+                                    source={{ uri: `${api.getBaseUrl()}${selectedEvent.snapshot_path}` }}
+                                    style={styles.eventModalImage}
+                                    resizeMode="contain"
+                                />
+                            ) : (
+                                <View style={styles.noMediaImagePlaceholder}>
+                                    <Text style={styles.noMediaImageText}>NO MEDIA SNAPSHOT FOR THIS THREAT</Text>
+                                </View>
+                            )}
+
+                            <ScrollView style={styles.eventDetailsTable}>
+                                <View style={styles.eventDetailRow}>
+                                    <Text style={styles.eventDetailLabel}>TIMESTAMP:</Text>
+                                    <Text style={styles.eventDetailVal}>{selectedEvent.created_at?.replace('T', ' ')}</Text>
+                                </View>
+                                <View style={styles.eventDetailRow}>
+                                    <Text style={styles.eventDetailLabel}>TYPE:</Text>
+                                    <Text style={styles.eventDetailVal}>{selectedEvent.event_type}</Text>
+                                </View>
+                                <View style={styles.eventDetailRow}>
+                                    <Text style={styles.eventDetailLabel}>SOURCE:</Text>
+                                    <Text style={styles.eventDetailVal}>{selectedEvent.source}</Text>
+                                </View>
+                                <View style={styles.eventDetailRow}>
+                                    <Text style={styles.eventDetailLabel}>RISK LEVEL:</Text>
+                                    <Text style={[styles.eventDetailVal, styles.riskValText]}>
+                                        {selectedEvent.risk_level}
+                                    </Text>
+                                </View>
+                                <View style={styles.eventDetailRow}>
+                                    <Text style={styles.eventDetailLabel}>CONFIDENCE:</Text>
+                                    <Text style={styles.eventDetailVal}>
+                                        {selectedEvent.confidence ? `${(selectedEvent.confidence * 100).toFixed(1)}%` : 'N/A'}
+                                    </Text>
+                                </View>
+                                <View style={styles.eventDetailRow}>
+                                    <Text style={styles.eventDetailLabel}>MESSAGE:</Text>
+                                    <Text style={styles.eventDetailVal}>{selectedEvent.message}</Text>
+                                </View>
+                            </ScrollView>
+                        </View>
+                    )}
+                </Pressable>
+            </Modal>
+
+            {/* TOAST SNACKBAR */}
+            {activeToast && (
+                <ToastSnackbar 
+                    toast={activeToast} 
+                    onDismiss={() => setActiveToast(null)} 
+                />
+            )}
+        </View>
     );
 };
 
@@ -187,299 +1698,1293 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: colors.bgDeep,
     },
-    contentContainer: {
-        padding: 12,
-        paddingBottom: 32,
-    },
-    header: {
+    navbar: {
+        height: 60,
+        backgroundColor: colors.accentCyan,
+        borderBottomWidth: 1.5,
+        borderBottomColor: colors.accentRed,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.borderColor,
-        marginBottom: 16,
+        paddingHorizontal: 12,
     },
-    headerTitle: {
-        fontSize: 18,
-        fontWeight: '900',
-        color: colors.accentCyan,
-        letterSpacing: 1,
-    },
-    headerSubtitle: {
-        fontSize: 10,
-        color: colors.textSecondary,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
-        marginTop: 2,
-    },
-    statusBox: {
+    brandRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.bgPanel,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 20,
+        gap: 6,
+    },
+    logoIcon: {
+        fontSize: 22,
+        textShadowColor: colors.accentRed,
+        textShadowRadius: 6,
+    },
+    brandTitle: {
+        fontSize: 13,
+        fontWeight: '900',
+        color: '#ffffff',
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+    },
+    brandSubtitle: {
+        fontSize: 8,
+        fontWeight: '700',
+        color: 'rgba(255, 255, 255, 0.8)',
+        fontFamily: 'monospace',
+        letterSpacing: 1.5,
+        marginTop: 1,
+    },
+    navbarControls: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    bellButton: {
+        position: 'relative',
+        padding: 4,
+        marginRight: 2,
+    },
+    bellIcon: {
+        fontSize: 18,
+    },
+    badgeCount: {
+        position: 'absolute',
+        top: -2,
+        right: -2,
+        backgroundColor: colors.accentOrange,
+        borderRadius: 6,
+        width: 13,
+        height: 13,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    badgeCountText: {
+        color: '#fff',
+        fontSize: 7,
+        fontWeight: '900',
+    },
+    sysTelemetryPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
         borderWidth: 1,
-        borderColor: colors.borderColor,
+        borderColor: 'rgba(255, 255, 255, 0.25)',
+        gap: 4,
     },
     dot: {
         width: 6,
         height: 6,
         borderRadius: 3,
-        marginRight: 6,
     },
-    onlineDot: {
+    dotGreen: {
         backgroundColor: colors.accentGreen,
+        shadowColor: colors.accentGreen,
+        shadowRadius: 4,
+        shadowOpacity: 0.8,
+    },
+    dotRed: {
+        backgroundColor: colors.accentRed,
     },
     statusText: {
-        color: colors.textPrimary,
-        fontSize: 11,
-        fontWeight: '600',
+        fontSize: 8,
+        fontWeight: '800',
+        color: '#ffffff',
+        fontFamily: 'monospace',
     },
-    gridContainer: {
-        gap: 8,
-        marginBottom: 8,
-    },
-    row: {
-        flexDirection: 'row',
-        gap: 8,
-    },
-    cameraCard: {
-        flex: 1,
-        aspectRatio: 1.6,
-        backgroundColor: colors.bgPanel,
+    btnEmergency: {
+        backgroundColor: colors.accentOrange,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 4,
         borderWidth: 1,
-        borderColor: colors.borderColor,
-        borderRadius: 10,
-        overflow: 'hidden',
-        position: 'relative',
+        borderColor: 'rgba(255,255,255,0.2)',
     },
-    activeCard: {
-        borderColor: colors.accentCyan,
+    btnEmergencyText: {
+        color: '#fff',
+        fontSize: 9,
+        fontWeight: '900',
+        fontFamily: 'monospace',
     },
-    videoContainer: {
+    tabBar: {
+        flexDirection: 'row',
+        backgroundColor: colors.bgPanel,
+        borderTopWidth: 1,
+        borderTopColor: colors.borderColor,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+    },
+    tabItem: {
         flex: 1,
+        alignItems: 'center',
+        paddingVertical: 8,
+        marginHorizontal: 4,
+        borderRadius: 4,
+    },
+    tabItemActive: {
+        backgroundColor: colors.accentCyan,
+        shadowColor: colors.accentCyan,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    tabText: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+    },
+    tabTextActive: {
+        color: '#ffffff',
+    },
+    scrollContainer: {
+        flex: 1,
+    },
+    scrollContent: {
+        padding: 12,
+        paddingBottom: 40,
+    },
+    videoStageCard: {
         backgroundColor: '#000',
+        borderColor: colors.borderColor,
+        borderWidth: 1.5,
+        borderRadius: 8,
+        overflow: 'hidden',
+        marginBottom: 10,
+    },
+    videoStageCardAlert: {
+        borderColor: colors.accentRed,
+        shadowColor: colors.accentRed,
+        shadowRadius: 10,
+        shadowOpacity: 0.25,
+    },
+    videoStage: {
+        width: '100%',
+        aspectRatio: 16 / 9,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: '#020408',
     },
-    streamFeed: {
+    liveStreamWrapper: {
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+    },
+    streamFeedImage: {
         width: '100%',
         height: '100%',
     },
-    placeholderFeed: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 4,
-    },
-    placeholderIcon: {
-        fontSize: 16,
-        marginBottom: 2,
-    },
-    placeholderText: {
-        color: colors.textSecondary,
-        fontSize: 9,
-        fontWeight: '700',
-    },
-    telemetryText: {
-        color: colors.textMuted,
-        fontSize: 7,
-        fontFamily: 'monospace',
-        marginTop: 2,
-    },
-    scanLine: {
+    hudOverlay: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
+        bottom: 0,
+        zIndex: 10,
+    },
+    hudTargetBox: {
+        position: 'absolute',
+        borderWidth: 2,
+        borderRadius: 2,
+    },
+    hudTargetLabel: {
+        position: 'absolute',
+        top: -18,
+        left: -2,
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+        borderRadius: 2,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    hudAlertDot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#fff',
+    },
+    hudTargetText: {
+        color: '#fff',
+        fontSize: 8,
+        fontWeight: '950',
+        fontFamily: 'monospace',
+    },
+    bracket: {
+        position: 'absolute',
+        width: 14,
+        height: 14,
+        borderColor: colors.accentCyan,
+    },
+    bracketTL: {
+        top: 10,
+        left: 10,
+        borderTopWidth: 2,
+        borderLeftWidth: 2,
+    },
+    bracketTR: {
+        top: 10,
+        right: 10,
+        borderTopWidth: 2,
+        borderRightWidth: 2,
+    },
+    bracketBL: {
+        bottom: 10,
+        left: 10,
+        borderBottomWidth: 2,
+        borderLeftWidth: 2,
+    },
+    bracketBR: {
+        bottom: 10,
+        right: 10,
+        borderBottomWidth: 2,
+        borderRightWidth: 2,
+    },
+    hudTelemetryHeader: {
+        position: 'absolute',
+        top: 10,
+        left: 30,
+        right: 30,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    hudTelemetryFooter: {
+        position: 'absolute',
+        bottom: 10,
+        left: 30,
+        right: 30,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    hudTelemetryText: {
+        color: 'rgba(255, 94, 54, 0.6)',
+        fontSize: 7,
+        fontFamily: 'monospace',
+    },
+    hudTelemetryAlertText: {
+        color: colors.accentRed,
+    },
+    scannerLine: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        height: 1.5,
+        backgroundColor: colors.accentCyan,
+        opacity: 0.4,
+    },
+    scannerLineDanger: {
+        backgroundColor: colors.accentRed,
+    },
+    crosshair: {
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        width: 30,
+        height: 30,
+        marginTop: -15,
+        marginLeft: -15,
+        justifyContent: 'center',
+        alignItems: 'center',
+        opacity: 0.3,
+    },
+    crosshairCircle: {
+        width: 10,
+        height: 10,
+        borderWidth: 1,
+        borderColor: colors.accentCyan,
+        borderRadius: 5,
+    },
+    crosshairH: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
         height: 1,
         backgroundColor: colors.accentCyan,
-        opacity: 0.15,
     },
-    overlayTop: {
+    crosshairV: {
         position: 'absolute',
-        top: 8,
-        left: 8,
-        right: 8,
+        top: 0,
+        bottom: 0,
+        width: 1,
+        backgroundColor: colors.accentCyan,
+    },
+    offlineFeed: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    offlineDotPulse: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.accentRed,
+        marginBottom: 8,
+    },
+    offlineText: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+        letterSpacing: 0.5,
+    },
+    offlineTelemetryText: {
+        fontSize: 7,
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+        marginTop: 4,
+    },
+    cameraRoster: {
+        flexDirection: 'row',
+        gap: 6,
+        marginBottom: 10,
+    },
+    cameraThumbnailCard: {
+        flex: 1,
+        backgroundColor: colors.bgPanel,
+        borderColor: colors.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cameraThumbnailActive: {
+        borderColor: colors.accentCyan,
+        backgroundColor: 'rgba(255, 94, 54, 0.05)',
+    },
+    cameraThumbLabel: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+    },
+    cameraThumbLabelActive: {
+        color: colors.accentCyan,
+    },
+    cameraThumbName: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: colors.textPrimary,
+        marginTop: 2,
+        textAlign: 'center',
+    },
+    patrolCard: {
+        backgroundColor: colors.bgPanel,
+        borderColor: colors.borderColor,
+        borderWidth: 1,
+        borderRadius: 6,
+        padding: 12,
+        marginVertical: 4,
+    },
+    patrolTitle: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: colors.accentCyan,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+        marginBottom: 6,
+    },
+    patrolRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
     },
-    badge: {
-        backgroundColor: colors.accentRed,
-        paddingHorizontal: 4,
+    patrolDesc: {
+        fontSize: 9,
+        color: colors.textSecondary,
+        flex: 1,
+        marginRight: 10,
+    },
+    toggleBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 4,
+        borderWidth: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    toggleBtnOn: {
+        borderColor: colors.accentCyan,
+        backgroundColor: 'rgba(255, 94, 54, 0.08)',
+    },
+    toggleBtnOff: {
+        borderColor: colors.borderColor,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    },
+    toggleBtnText: {
+        fontSize: 8,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+        color: colors.textPrimary,
+    },
+    zonesMonitorCard: {
+        marginVertical: 10,
+    },
+    sectionTitle: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+        marginBottom: 10,
+    },
+    zoneCard: {
+        borderRadius: 6,
+        borderWidth: 1.5,
+        padding: 12,
+        marginBottom: 10,
+        position: 'relative',
+    },
+    zoneCardNormal: {
+        borderColor: colors.borderColor,
+        backgroundColor: colors.bgPanel,
+        borderLeftWidth: 4,
+        borderLeftColor: colors.accentCyan,
+    },
+    zoneCardAlert: {
+        borderColor: colors.accentRed,
+        backgroundColor: 'rgba(255, 59, 48, 0.05)',
+        borderLeftWidth: 4,
+        borderLeftColor: colors.accentRed,
+    },
+    zoneHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    zoneName: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: colors.textPrimary,
+    },
+    zoneDesc: {
+        fontSize: 8,
+        color: colors.textMuted,
+        marginTop: 2,
+    },
+    zoneBadge: {
+        paddingHorizontal: 8,
         paddingVertical: 2,
+        borderRadius: 10,
+        borderWidth: 1,
+    },
+    zoneBadgeSafe: {
+        borderColor: 'rgba(255, 94, 54, 0.2)',
+        backgroundColor: 'rgba(255, 94, 54, 0.05)',
+    },
+    zoneBadgeAlert: {
+        borderColor: colors.accentRed,
+        backgroundColor: 'rgba(255, 59, 48, 0.15)',
+    },
+    zoneBadgeText: {
+        fontSize: 7,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+        color: colors.textPrimary,
+    },
+    zoneTelemetryRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginBottom: 10,
+    },
+    zoneTelemetryPill: {
+        flex: 1,
+        backgroundColor: colors.bgDeep,
+        padding: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+    },
+    zonePillLabel: {
+        fontSize: 7,
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+    },
+    zonePillValue: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: colors.textPrimary,
+        fontFamily: 'monospace',
+        marginTop: 2,
+    },
+    btnSprinkler: {
+        backgroundColor: colors.bgCard,
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+        borderRadius: 4,
+        paddingVertical: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    btnSprinklerActive: {
+        borderColor: colors.accentRed,
+        backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    },
+    btnSprinklerText: {
+        fontSize: 9,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+        color: colors.textPrimary,
+    },
+    subScreenContainer: {
+        flex: 1,
+        padding: 12,
+    },
+    subScreenHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 14,
+    },
+    subScreenTitle: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: colors.accentCyan,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+    },
+    refreshBtn: {
+        borderWidth: 1,
+        borderColor: colors.accentCyan,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 4,
+        backgroundColor: 'rgba(255, 94, 54, 0.05)',
+        minWidth: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    refreshBtnText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: colors.accentCyan,
+        fontFamily: 'monospace',
+    },
+    loadingWrapper: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 40,
+    },
+    loadingText: {
+        fontSize: 10,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+        marginTop: 12,
+    },
+    logsList: {
+        flex: 1,
+    },
+    logCard: {
+        backgroundColor: colors.bgPanel,
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+        borderRadius: 6,
+        padding: 12,
+        marginBottom: 8,
+    },
+    logCardTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 6,
+    },
+    logId: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+    },
+    logTime: {
+        fontSize: 10,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+    },
+    logRiskBadge: {
+        paddingHorizontal: 6,
+        paddingVertical: 1,
         borderRadius: 2,
+        borderWidth: 0.5,
+    },
+    logRiskAlert: {
+        borderColor: colors.accentRed,
+        backgroundColor: 'rgba(255,59,48,0.1)',
+    },
+    logRiskSafe: {
+        borderColor: colors.borderColor,
+        backgroundColor: 'rgba(255,255,255,0.02)',
+    },
+    logRiskText: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: colors.textPrimary,
+        fontFamily: 'monospace',
+    },
+    logMessage: {
+        fontSize: 11,
+        color: colors.textPrimary,
+        marginVertical: 4,
+    },
+    logCardBottom: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 4,
+    },
+    logMeta: {
+        fontSize: 8,
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+    },
+    viewFrameText: {
+        fontSize: 8,
+        color: colors.accentCyan,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+        textDecorationLine: 'underline',
+    },
+    noMediaText: {
+        fontSize: 8,
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+    },
+    emptyLogsText: {
+        fontSize: 10,
+        color: colors.textMuted,
+        textAlign: 'center',
+        paddingVertical: 30,
+        fontStyle: 'italic',
+    },
+    settingsCard: {
+        backgroundColor: colors.bgPanel,
+        borderColor: colors.borderColor,
+        borderWidth: 1.5,
+        borderRadius: 8,
+        padding: 14,
+        marginBottom: 12,
+    },
+    settingsTitle: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: colors.accentCyan,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+        marginBottom: 4,
+    },
+    settingsDesc: {
+        fontSize: 8,
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+        marginBottom: 10,
+    },
+    ipConfigRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    ipInput: {
+        flex: 1,
+        backgroundColor: colors.bgDeep,
+        borderColor: colors.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        color: colors.textPrimary,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        fontSize: 12,
+        fontFamily: 'monospace',
+    },
+    ipSaveBtn: {
+        backgroundColor: colors.accentCyan,
+        borderRadius: 4,
+        paddingHorizontal: 16,
+        justifyContent: 'center',
+    },
+    ipSaveBtnText: {
+        color: colors.bgDeep,
+        fontSize: 10,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+    },
+    fieldLabel: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+        marginTop: 10,
+        marginBottom: 4,
+        letterSpacing: 0.5,
+    },
+    subFieldLabel: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+        marginTop: 6,
+        marginBottom: 2,
+    },
+    textField: {
+        backgroundColor: colors.bgDeep,
+        borderColor: colors.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        color: colors.textPrimary,
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        fontSize: 11,
+        fontFamily: 'monospace',
+    },
+    adjusterRow: {
+        flexDirection: 'row',
+        gap: 6,
+        marginBottom: 4,
+    },
+    adjusterBtn: {
+        flex: 1,
+        backgroundColor: colors.bgCard,
+        borderColor: colors.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        paddingVertical: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    adjusterBtnText: {
+        color: colors.accentCyan,
+        fontSize: 9,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+    },
+    switchRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginVertical: 6,
+        paddingVertical: 4,
+        borderBottomWidth: 0.5,
+        borderBottomColor: 'rgba(255,255,255,0.03)',
+    },
+    switchLabel: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: colors.textPrimary,
+        fontFamily: 'monospace',
+    },
+    submitBtn: {
+        backgroundColor: colors.accentCyan,
+        borderRadius: 4,
+        paddingVertical: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 16,
+    },
+    submitBtnText: {
+        color: colors.bgDeep,
+        fontSize: 10,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+    },
+    resetBtn: {
+        borderColor: colors.accentRed,
+        borderWidth: 1,
+        backgroundColor: 'rgba(255,59,48,0.05)',
+        borderRadius: 4,
+        paddingVertical: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 8,
+    },
+    resetBtnText: {
+        color: colors.accentRed,
+        fontSize: 9,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+        letterSpacing: 0.5,
+    },
+    badge: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 4,
+        borderWidth: 1,
+    },
+    badgeActive: {
+        backgroundColor: 'rgba(255, 94, 54, 0.08)',
+        borderColor: colors.accentCyan,
+    },
+    badgeLocked: {
+        backgroundColor: 'rgba(255, 59, 48, 0.08)',
+        borderColor: colors.accentRed,
     },
     badgeText: {
-        color: '#fff',
+        fontSize: 8,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+        color: colors.textPrimary,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 16,
+    },
+    notificationsModalContent: {
+        width: '90%',
+        maxHeight: '80%',
+        backgroundColor: colors.bgPanel,
+        borderColor: colors.borderColor,
+        borderWidth: 1.5,
+        borderRadius: 8,
+        padding: 16,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderBottomWidth: 1,
+        borderBottomColor: colors.borderColor,
+        paddingBottom: 10,
+        marginBottom: 12,
+    },
+    modalTitle: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: colors.accentCyan,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+    },
+    closeModalText: {
+        color: colors.textSecondary,
+        fontSize: 16,
+        fontWeight: 'bold',
+        padding: 4,
+    },
+    notificationsScroll: {
+        flexGrow: 0,
+    },
+    emptyNotifications: {
+        color: colors.textMuted,
+        fontSize: 10,
+        textAlign: 'center',
+        paddingVertical: 20,
+        fontStyle: 'italic',
+    },
+    notificationCard: {
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+        borderRadius: 4,
+        padding: 10,
+        marginBottom: 8,
+        position: 'relative',
+    },
+    notifRead: {
+        backgroundColor: 'rgba(255, 255, 255, 0.01)',
+        opacity: 0.6,
+    },
+    notifUnread: {
+        backgroundColor: 'rgba(255, 94, 54, 0.04)',
+        borderColor: colors.accentCyan,
+    },
+    notifTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    notifTime: {
+        fontSize: 9,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+    },
+    notifRisk: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: colors.accentRed,
+        fontFamily: 'monospace',
+    },
+    notifMessage: {
+        fontSize: 10,
+        color: colors.textPrimary,
+    },
+    notifReadBtn: {
+        alignSelf: 'flex-end',
+        marginTop: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 2,
+        backgroundColor: colors.accentCyan,
+    },
+    notifReadBtnText: {
+        color: colors.bgDeep,
         fontSize: 8,
         fontWeight: '900',
     },
-    cameraLabel: {
-        color: '#fff',
-        fontSize: 9,
-        fontWeight: '700',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        paddingHorizontal: 4,
-        paddingVertical: 2,
-        borderRadius: 2,
-    },
-    overlayBottom: {
-        position: 'absolute',
-        bottom: 8,
-        left: 8,
-        right: 8,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    timestampText: {
-        color: '#fff',
-        fontSize: 8,
-        fontFamily: 'monospace',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        paddingHorizontal: 4,
-        paddingVertical: 2,
-        borderRadius: 2,
-    },
-    signalText: {
-        color: '#fff',
-        fontSize: 8,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        paddingHorizontal: 4,
-        paddingVertical: 2,
-        borderRadius: 2,
-    },
-    infoSection: {
-        flexDirection: 'row',
-        gap: 8,
-        marginVertical: 8,
-    },
-    sensorCard: {
-        flex: 2,
+    eventDetailContent: {
+        width: '95%',
+        maxHeight: '90%',
         backgroundColor: colors.bgPanel,
+        borderColor: colors.borderColor,
+        borderWidth: 1.5,
+        borderRadius: 8,
+        padding: 16,
+    },
+    eventModalImage: {
+        width: '100%',
+        aspectRatio: 16 / 10,
+        backgroundColor: '#000',
+        borderRadius: 4,
+        marginBottom: 12,
+    },
+    noMediaImagePlaceholder: {
+        width: '100%',
+        aspectRatio: 16 / 10,
+        backgroundColor: '#020408',
+        borderRadius: 4,
+        marginBottom: 12,
         borderWidth: 1,
         borderColor: colors.borderColor,
-        borderRadius: 12,
-        padding: 12,
+        borderStyle: 'dashed',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
     },
-    sectionHeader: {
-        fontSize: 10,
-        fontWeight: '700',
+    noMediaImageText: {
         color: colors.textMuted,
-        textTransform: 'uppercase',
+        fontFamily: 'monospace',
+        fontSize: 9,
+        textAlign: 'center',
+    },
+    eventDetailsTable: {
+        flexGrow: 0,
+    },
+    eventDetailRow: {
+        flexDirection: 'row',
+        borderBottomWidth: 0.5,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+        paddingVertical: 8,
+    },
+    eventDetailLabel: {
+        width: 100,
+        fontSize: 9,
+        fontWeight: '900',
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+    },
+    eventDetailVal: {
+        flex: 1,
+        fontSize: 10,
+        color: colors.textPrimary,
+    },
+    riskValText: {
+        color: colors.accentRed,
+        fontWeight: '900',
+        fontFamily: 'monospace',
+    },
+    logoImage: {
+        width: 28,
+        height: 28,
+        resizeMode: 'contain',
+        marginRight: 4,
+    },
+    systemStatsBanner: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        backgroundColor: colors.bgPanel,
+        borderColor: colors.borderColor,
+        borderWidth: 1.5,
+        borderRadius: 6,
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        marginBottom: 12,
+        shadowColor: colors.accentCyan,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    statBannerItem: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    statBannerLabel: {
+        fontSize: 7,
+        fontWeight: '800',
+        color: colors.textMuted,
+        fontFamily: 'monospace',
         letterSpacing: 0.5,
+    },
+    statBannerValue: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: colors.textPrimary,
+        fontFamily: 'monospace',
+        marginTop: 2,
+    },
+    statDivider: {
+        width: 1,
+        height: 20,
+        backgroundColor: colors.borderColor,
+    },
+    hudRotateBtn: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        zIndex: 30,
+        backgroundColor: 'rgba(10, 25, 47, 0.85)',
+        borderColor: colors.accentCyan,
+        borderWidth: 1,
+        borderRadius: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    hudRotateBtnText: {
+        color: colors.accentCyan,
+        fontSize: 8,
+        fontWeight: 'bold',
+        fontFamily: 'monospace',
+    },
+    verificationResultBox: {
+        marginTop: 12,
+        padding: 10,
+        borderColor: colors.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        backgroundColor: 'rgba(6, 10, 19, 0.3)',
+    },
+    verificationResultTitle: {
+        fontSize: 9,
+        color: colors.accentCyan,
+        fontWeight: '900',
+        fontFamily: 'monospace',
         marginBottom: 8,
     },
-    sensorGrid: {
-        flexDirection: 'row',
-        gap: 6,
+    verificationPhotoPane: {
+        width: '100%',
+        aspectRatio: 16 / 9,
+        backgroundColor: '#000',
+        borderRadius: 4,
+        overflow: 'hidden',
+        position: 'relative',
     },
-    sensorTile: {
-        flex: 1,
-        backgroundColor: colors.bgCard,
-        borderWidth: 1,
-        borderColor: colors.borderColor,
-        borderRadius: 6,
-        padding: 6,
+    verificationImage: {
+        width: '100%',
+        height: '100%',
     },
-    alarmTile: {
-        borderColor: colors.accentRed,
-    },
-    sensorLabel: {
-        fontSize: 8,
-        fontWeight: '600',
-        color: colors.textMuted,
-    },
-    sensorValue: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: colors.textPrimary,
-        marginVertical: 2,
-    },
-    sensorStatus: {
-        fontSize: 8,
-        fontWeight: '700',
-        color: colors.accentGreen,
-    },
-    alarmText: {
-        color: colors.accentRed,
-    },
-    healthCard: {
-        flex: 1.2,
-        backgroundColor: colors.bgPanel,
-        borderWidth: 1,
-        borderColor: colors.borderColor,
-        borderRadius: 12,
-        padding: 12,
-    },
-    healthBox: {
-        gap: 4,
-        justifyContent: 'center',
-        flex: 1,
-    },
-    healthRow: {
+    verResultRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+        borderRadius: 4,
+        borderLeftWidth: 3,
+        marginTop: 4,
     },
-    healthLabel: {
+    verResultText: {
         fontSize: 9,
-        color: colors.textMuted,
-    },
-    healthValue: {
-        fontSize: 10,
-        fontWeight: '700',
         color: colors.textPrimary,
+        fontFamily: 'monospace',
     },
-    alertsCard: {
-        backgroundColor: colors.bgPanel,
-        borderColor: colors.borderColor,
-        borderWidth: 1,
-        borderRadius: 12,
-        padding: 12,
-        marginTop: 8,
+    verResultStatus: {
+        fontSize: 9,
+        fontWeight: 'bold',
+        fontFamily: 'monospace',
     },
-    alertsList: {
-        gap: 6,
-    },
-    alertItem: {
-        flexDirection: 'row',
-        backgroundColor: colors.bgCard,
-        borderWidth: 1,
-        borderColor: colors.borderColor,
-        borderRadius: 6,
-        paddingVertical: 8,
+    roleSelectBtn: {
         paddingHorizontal: 10,
-        alignItems: 'center',
+        paddingVertical: 6,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
     },
-    alertIndicator: {
-        width: 4,
-        height: 16,
-        backgroundColor: colors.accentCyan,
-        borderRadius: 2,
-        marginRight: 8,
+    roleSelectBtnActive: {
+        borderColor: colors.accentCyan,
+        backgroundColor: 'rgba(255, 94, 54, 0.08)',
     },
-    alertIndicatorHigh: {
-        backgroundColor: colors.accentRed,
+    roleSelectBtnText: {
+        fontSize: 8,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
     },
-    alertContent: {
+    roleSelectBtnTextActive: {
+        color: colors.textPrimary,
+        fontWeight: 'bold',
+    },
+    portraitPhotoSelector: {
         flexDirection: 'row',
         alignItems: 'center',
-        flex: 1,
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+        borderStyle: 'dashed',
+        borderRadius: 4,
+        paddingVertical: 14,
+        marginTop: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.01)',
     },
-    alertTime: {
+    portraitSelectorIcon: {
+        fontSize: 16,
+        marginRight: 6,
+    },
+    portraitSelectorText: {
+        fontSize: 9,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+    },
+    regStatusBox: {
+        padding: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        marginTop: 10,
+    },
+    regStatusText: {
         fontSize: 9,
         fontFamily: 'monospace',
-        color: colors.accentCyan,
-        marginRight: 6,
-        fontWeight: '600',
+        textAlign: 'center',
     },
-    alertDesc: {
-        fontSize: 10,
-        fontWeight: '600',
+    rosterContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginTop: 8,
+    },
+    rosterItemCard: {
+        width: '48%',
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+        borderColor: colors.borderColor,
+        borderWidth: 1,
+        borderRadius: 4,
+        padding: 8,
+        alignItems: 'center',
+    },
+    rosterAvatarWrapper: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        overflow: 'hidden',
+        backgroundColor: colors.bgDeep,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 6,
+    },
+    rosterAvatar: {
+        width: '100%',
+        height: '100%',
+    },
+    rosterAvatarFallback: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(255, 94, 54, 0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    rosterAvatarFallbackText: {
+        color: colors.accentCyan,
+        fontSize: 12,
+        fontWeight: 'bold',
+        fontFamily: 'monospace',
+    },
+    rosterItemName: {
+        fontSize: 9,
+        fontWeight: 'bold',
         color: colors.textPrimary,
+        fontFamily: 'monospace',
+        textAlign: 'center',
+    },
+    rosterItemRole: {
+        fontSize: 7,
+        color: colors.textMuted,
+        fontFamily: 'monospace',
+        textAlign: 'center',
+        marginTop: 2,
+    },
+    paginationContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 16,
+        marginTop: 12,
+        paddingBottom: 24,
+    },
+    paginationBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.borderColor,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    },
+    paginationBtnDisabled: {
+        opacity: 0.35,
+    },
+    paginationBtnText: {
+        fontSize: 10,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+        fontWeight: 'bold',
+    },
+    paginationText: {
+        fontSize: 10,
+        color: colors.textSecondary,
+        fontFamily: 'monospace',
+    },
+    toastContainer: {
+        position: 'absolute',
+        top: 20,
+        left: 12,
+        right: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 8,
+        borderWidth: 1.5,
+        zIndex: 99999,
+        elevation: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 6,
+    },
+    toastIconWrapper: {
+        marginRight: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    toastIcon: {
+        fontSize: 22,
+    },
+    toastTextWrapper: {
         flex: 1,
+    },
+    toastTitle: {
+        fontSize: 11,
+        fontWeight: 'bold',
+        color: '#ffffff',
+        fontFamily: 'monospace',
+        letterSpacing: 0.5,
+    },
+    toastBody: {
+        fontSize: 10,
+        color: 'rgba(255, 255, 255, 0.9)',
+        fontFamily: 'monospace',
+        marginTop: 2,
+    },
+    toastCloseBtn: {
+        padding: 6,
+        marginLeft: 8,
+        alignSelf: 'center',
+    },
+    toastCloseText: {
+        fontSize: 14,
+        color: 'rgba(255, 255, 255, 0.5)',
+        fontWeight: 'bold',
     },
 });

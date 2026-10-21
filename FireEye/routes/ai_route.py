@@ -1,5 +1,14 @@
-from fastapi import APIRouter
+import asyncio
+import time
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+
+LAST_EVENT_TIMES = {
+    "FIRE": 0.0,
+    "SMOKE": 0.0,
+    "HUMAN": 0.0
+}
+COOLDOWN_SECONDS = 15.0
 
 from services.hailo_service import hailo_service
 from services.mqtt_service import mqtt_service
@@ -19,6 +28,7 @@ class AiDetectRequest(BaseModel):
     smoke: bool = False
     human: bool = False
     confidence: float = 0.0
+    bbox: list[int] | None = None
 
 
 def calculate_risk_level(fire: bool, smoke: bool, human: bool) -> str:
@@ -37,6 +47,38 @@ def calculate_risk_level(fire: bool, smoke: bool, human: bool) -> str:
     return "SAFE"
 
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                pass
+
+manager = ConnectionManager()
+
+
+@router.websocket("/ws/ai")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+
 @router.get("/api/ai/status")
 def ai_status():
     return {
@@ -46,12 +88,23 @@ def ai_status():
 
 
 @router.post("/api/ai/detect")
-def ai_detect(data: AiDetectRequest):
+async def ai_detect(data: AiDetectRequest):
     result = update_ai_detection(
         fire_detected=data.fire,
         smoke_detected=data.smoke,
-        confidence=data.confidence
+        human_detected=data.human,
+        confidence=data.confidence,
+        bbox=data.bbox
     )
+
+    await manager.broadcast({
+        "type": "ai_detection",
+        "fire": data.fire,
+        "smoke": data.smoke,
+        "human": data.human,
+        "confidence": data.confidence,
+        "bbox": data.bbox
+    })
 
     danger = data.fire or data.smoke
 
@@ -70,11 +123,19 @@ def ai_detect(data: AiDetectRequest):
         human=data.human
     )
 
+    now = time.time()
+    should_save_event = False
+
+    if event_type:
+        if now - LAST_EVENT_TIMES.get(event_type, 0.0) >= COOLDOWN_SECONDS:
+            should_save_event = True
+            LAST_EVENT_TIMES[event_type] = now
+
     snapshot_path = None
     event_id = None
 
-    if event_type:
-        snapshot_path = capture_snapshot(event_type)
+    if event_type and should_save_event:
+        snapshot_path = await asyncio.to_thread(capture_snapshot, event_type)
 
         message = f"AI phát hiện {event_type} - mức độ {risk_level}"
 
@@ -87,7 +148,7 @@ def ai_detect(data: AiDetectRequest):
             snapshot_path=snapshot_path
         )
 
-    if danger:
+    if danger and should_save_event:
         mqtt_service.publish_alert({
             "source": "ai",
             "event_type": event_type,

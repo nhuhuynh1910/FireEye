@@ -4,9 +4,16 @@ import shutil
 
 from services.face_service import (
     register_face_from_image,
+    register_face_from_dahua,
     match_face_from_image,
     match_face_from_dahua,
     list_people
+)
+
+from services.realtime_face_worker import (
+    start_face_worker,
+    stop_face_worker,
+    get_face_worker_status
 )
 
 router = APIRouter(
@@ -24,6 +31,7 @@ def register_face(
     role: str = Form("User"),
     image: UploadFile = File(...)
 ):
+
     file_path = UPLOAD_DIR / image.filename
 
     with open(file_path, "wb") as buffer:
@@ -38,10 +46,23 @@ def register_face(
     return result
 
 
+@router.post("/register-camera")
+def register_camera_face(
+    name: str = Form(...),
+    role: str = Form("User")
+):
+    result = register_face_from_dahua(
+        name=name,
+        role=role
+    )
+    return result
+
+
 @router.post("/match")
 def match_face(
     image: UploadFile = File(...)
 ):
+
     file_path = UPLOAD_DIR / image.filename
 
     with open(file_path, "wb") as buffer:
@@ -56,11 +77,31 @@ def match_face(
 
 @router.get("/match-camera")
 def match_camera_face():
+
     return match_face_from_dahua()
+
+
+@router.post("/watch/start")
+def start_face_watch():
+
+    return start_face_worker()
+
+
+@router.post("/watch/stop")
+def stop_face_watch():
+
+    return stop_face_worker()
+
+
+@router.get("/watch/status")
+def face_watch_status():
+
+    return get_face_worker_status()
 
 
 @router.get("/people")
 def get_people():
+
     return {
         "success": True,
         "data": list_people()

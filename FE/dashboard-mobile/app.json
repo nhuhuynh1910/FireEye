@@ -13,7 +13,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#07080a"
-      }
+      },
+      "package": "com.tiendat0998.fireeyemobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -28,6 +29,11 @@
           "imageWidth": 200
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8db7a1bb-1a35-4b31-b4df-4088213825c4"
+      }
+    }
   }
 }
