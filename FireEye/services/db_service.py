@@ -93,6 +93,27 @@ def init_db():
         except sqlite3.OperationalError:
             pass # Cột đã tồn tại
 
+    # Bổ sung các cột an toàn cho people và face_embeddings (hỗ trợ mobile app consent và mở rộng đa góc mặt)
+    for col, col_type in [
+        ("consented_at", "TEXT"),
+        ("group_tag", "TEXT DEFAULT 'FAMILY'"),
+        ("notes", "TEXT DEFAULT ''"),
+        ("status", "TEXT DEFAULT 'active'")
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE people ADD COLUMN {col} {col_type}")
+        except sqlite3.OperationalError:
+            pass
+
+    for col, col_type in [
+        ("angle_type", "TEXT DEFAULT 'FRONTAL'"),
+        ("quality_score", "REAL DEFAULT 1.0")
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE face_embeddings ADD COLUMN {col} {col_type}")
+        except sqlite3.OperationalError:
+            pass
+
     # Tạo bảng phân quyền quản lý theo Zone
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS zone_authorizations (
@@ -254,23 +275,35 @@ def get_events(limit: int = 50) -> List[Dict[str, Any]]:
 def insert_person(
     name: str,
     role: str = "",
-    avatar_path: str = ""
+    avatar_path: str = "",
+    consented_at: str = None,
+    group_tag: str = "FAMILY",
+    notes: str = ""
 ):
     conn = get_connection()
     cursor = conn.cursor()
+
+    if consented_at is None:
+        consented_at = get_now()
 
     cursor.execute("""
         INSERT INTO people (
             name,
             role,
             avatar_path,
+            consented_at,
+            group_tag,
+            notes,
             created_at
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
         name,
         role,
         avatar_path,
+        consented_at,
+        group_tag,
+        notes,
         get_now()
     ))
 
@@ -284,7 +317,9 @@ def insert_person(
 def insert_face_embedding(
     person_id: int,
     embedding,
-    image_path: str = ""
+    image_path: str = "",
+    angle_type: str = "FRONTAL",
+    quality_score: float = 1.0
 ):
     conn = get_connection()
     cursor = conn.cursor()
@@ -298,13 +333,17 @@ def insert_face_embedding(
             person_id,
             embedding,
             image_path,
+            angle_type,
+            quality_score,
             created_at
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
     """, (
         person_id,
         embedding_json,
         image_path,
+        angle_type,
+        quality_score,
         get_now()
     ))
 
@@ -325,8 +364,11 @@ def get_all_face_embeddings():
             face_embeddings.person_id,
             people.name,
             people.role,
+            people.group_tag,
             face_embeddings.embedding,
             face_embeddings.image_path,
+            face_embeddings.angle_type,
+            face_embeddings.quality_score,
             face_embeddings.created_at
         FROM face_embeddings
         JOIN people
@@ -345,15 +387,46 @@ def get_people():
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT *
-        FROM people
-        ORDER BY id DESC
+        SELECT 
+            p.*,
+            (SELECT COUNT(*) FROM face_embeddings WHERE person_id = p.id) as samples_count
+        FROM people p
+        ORDER BY p.id DESC
     """)
 
     rows = cursor.fetchall()
     conn.close()
 
     return [dict(row) for row in rows]
+
+
+def get_person_by_id(person_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM people WHERE id = ?", (person_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_embeddings_by_person_id(person_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM face_embeddings WHERE person_id = ? ORDER BY id ASC", (person_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def delete_person_db(person_id: int) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM face_embeddings WHERE person_id = ?", (person_id,))
+    cursor.execute("DELETE FROM people WHERE id = ?", (person_id,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
 
 
 def get_notifications(limit: int = 20):
@@ -997,4 +1070,4 @@ def revoke_cloud_principal(uid: str) -> int:
     conn.commit()
     count = cursor.rowcount
     conn.close()
-    return count
+    return count

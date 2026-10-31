@@ -15,8 +15,60 @@ from services.db_service import (
     insert_person,
     insert_face_embedding,
     get_all_face_embeddings,
-    get_people
+    get_people,
+    get_person_by_id,
+    get_embeddings_by_person_id,
+    delete_person_db,
+    get_now
 )
+
+try:
+    from PIL import Image, ImageOps
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
+
+def normalize_image_orientation(image_path: str):
+    """
+    Chuẩn hóa chiều xoay của ảnh dựa trên cờ EXIF Orientation từ điện thoại (iOS / Android).
+    Đảm bảo tương thích trên cả Linux (Raspberry Pi 5) và Windows.
+    """
+    if not PIL_AVAILABLE:
+        return
+    try:
+        with Image.open(image_path) as img:
+            transposed = ImageOps.exif_transpose(img)
+            if transposed is not None:
+                transposed.save(image_path)
+    except Exception:
+        pass
+
+
+def assess_face_quality(img, bbox=None) -> float:
+    """
+    Đánh giá độ rõ nét của khuôn mặt bằng phương sai Laplacian (Laplacian Variance).
+    Trả về điểm chất lượng chuẩn hóa từ 0.0 đến 1.0.
+    """
+    try:
+        if bbox is not None:
+            x1, y1, x2, y2 = [int(v) for v in bbox]
+            h, w = img.shape[:2]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            face_crop = img[y1:y2, x1:x2]
+        else:
+            face_crop = img
+
+        if face_crop.size == 0:
+            return 0.5
+
+        gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+        variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+        score = min(1.0, max(0.1, variance / 100.0))
+        return round(float(score), 2)
+    except Exception:
+        return 0.8
 
 from services.snapshot_service import capture_snapshot
 
@@ -69,8 +121,11 @@ def reload_embeddings_cache():
                 "person_id": row["person_id"],
                 "name": row["name"],
                 "role": row["role"],
+                "group_tag": row.get("group_tag", "FAMILY"),
                 "embedding": emb,
-                "image_path": row["image_path"]
+                "image_path": row["image_path"],
+                "angle_type": row.get("angle_type", "FRONTAL"),
+                "quality_score": row.get("quality_score", 1.0)
             })
         except Exception as e:
             print("Lỗi chuyển đổi embedding:", e)
@@ -89,14 +144,22 @@ def cosine_similarity(a, b):
 
 def register_face_from_image(
     name: str,
-    role: str,
-    image_path: str
+    role: str = "User",
+    image_path: str = "",
+    consent: bool = True,
+    consented_at: str = None,
+    group_tag: str = "FAMILY",
+    angle_type: str = "FRONTAL",
+    notes: str = ""
 ):
     if face_app is None:
         return {
             "success": False,
             "message": "Không thể đăng ký: Thư viện nhận dạng khuôn mặt (insightface) không hoạt động trên thiết bị này"
         }
+
+    # Tự động chuẩn hóa chiều xoay của ảnh nếu chụp từ camera điện thoại
+    normalize_image_orientation(image_path)
     img = cv2.imread(image_path)
 
     if img is None:
@@ -135,8 +198,15 @@ def register_face_from_image(
             "message": "Không tìm thấy gương mặt trong ảnh"
         }
 
+    if len(faces) > 1:
+        return {
+            "success": False,
+            "message": "Phát hiện nhiều hơn 1 khuôn mặt trong ảnh. Vui lòng chỉ chụp 1 người khi đăng ký."
+        }
+
     face = faces[0]
     embedding = face.embedding
+    quality_score = assess_face_quality(img, face.bbox if hasattr(face, 'bbox') else None)
 
     avatar_name = f"{uuid.uuid4().hex}.jpg"
     avatar_path = FACE_DIR / avatar_name
@@ -145,16 +215,24 @@ def register_face_from_image(
 
     public_avatar_path = f"/static/faces/{avatar_name}"
 
+    if consented_at is None and consent:
+        consented_at = get_now()
+
     person_id = insert_person(
         name=name,
         role=role,
-        avatar_path=public_avatar_path
+        avatar_path=public_avatar_path,
+        consented_at=consented_at,
+        group_tag=group_tag,
+        notes=notes
     )
 
     embedding_id = insert_face_embedding(
         person_id=person_id,
         embedding=embedding,
-        image_path=public_avatar_path
+        image_path=public_avatar_path,
+        angle_type=angle_type,
+        quality_score=quality_score
     )
 
     # Nạp lại cache sau khi đăng ký thành công
@@ -167,6 +245,9 @@ def register_face_from_image(
         "embedding_id": embedding_id,
         "name": name,
         "role": role,
+        "group_tag": group_tag,
+        "consented_at": consented_at,
+        "quality_score": quality_score,
         "avatar_path": public_avatar_path
     }
 
@@ -267,8 +348,10 @@ def match_face_from_image(
         if best_person and best_score >= threshold:
             results.append({
                 "matched": True,
+                "person_id": best_person.get("person_id"),
                 "name": best_person["name"],
                 "role": best_person["role"],
+                "group_tag": best_person.get("group_tag", "FAMILY"),
                 "confidence": round(best_score, 3),
                 "bbox": bbox
             })
@@ -306,7 +389,15 @@ def match_face_from_dahua():
     return result
 
 
-def register_face_from_dahua(name: str, role: str):
+def register_face_from_dahua(
+    name: str,
+    role: str = "User",
+    consent: bool = True,
+    consented_at: str = None,
+    group_tag: str = "FAMILY",
+    angle_type: str = "FRONTAL",
+    notes: str = ""
+):
     snapshot_path = capture_snapshot("face_reg")
 
     if snapshot_path is None:
@@ -320,10 +411,108 @@ def register_face_from_dahua(name: str, role: str):
     result = register_face_from_image(
         name=name,
         role=role,
-        image_path=local_path
+        image_path=local_path,
+        consent=consent,
+        consented_at=consented_at,
+        group_tag=group_tag,
+        angle_type=angle_type,
+        notes=notes
     )
 
     return result
+
+
+def add_face_sample_to_person(
+    person_id: int,
+    image_path: str,
+    angle_type: str = "OTHER"
+):
+    """
+    Mở rộng: Đăng ký thêm mẫu góc mặt (chính diện, nghiêng trái, nghiêng phải, đeo kính)
+    cho hồ sơ người đã tồn tại.
+    """
+    person = get_person_by_id(person_id)
+    if not person:
+        return {
+            "success": False,
+            "message": f"Không tìm thấy người với ID {person_id}"
+        }
+
+    if face_app is None:
+        return {
+            "success": False,
+            "message": "Không thể đăng ký: Thư viện nhận dạng khuôn mặt (insightface) không hoạt động trên thiết bị này"
+        }
+
+    normalize_image_orientation(image_path)
+    img = cv2.imread(image_path)
+    if img is None:
+        return {
+            "success": False,
+            "message": "Không đọc được ảnh"
+        }
+
+    faces = face_app.get(img)
+    if len(faces) == 0:
+        return {
+            "success": False,
+            "message": "Không tìm thấy gương mặt trong ảnh"
+        }
+
+    face = faces[0]
+    embedding = face.embedding
+    quality_score = assess_face_quality(img, face.bbox if hasattr(face, 'bbox') else None)
+
+    sample_name = f"{uuid.uuid4().hex}.jpg"
+    sample_path = FACE_DIR / sample_name
+    cv2.imwrite(str(sample_path), img)
+    public_path = f"/static/faces/{sample_name}"
+
+    embedding_id = insert_face_embedding(
+        person_id=person_id,
+        embedding=embedding,
+        image_path=public_path,
+        angle_type=angle_type,
+        quality_score=quality_score
+    )
+
+    reload_embeddings_cache()
+
+    return {
+        "success": True,
+        "message": f"Đã bổ sung góc mặt '{angle_type}' thành công",
+        "person_id": person_id,
+        "embedding_id": embedding_id,
+        "angle_type": angle_type,
+        "quality_score": quality_score,
+        "image_path": public_path
+    }
+
+
+def delete_person(person_id: int) -> bool:
+    embeddings = get_embeddings_by_person_id(person_id)
+    person = get_person_by_id(person_id)
+
+    deleted = delete_person_db(person_id)
+    if deleted:
+        reload_embeddings_cache()
+        if person and person.get("avatar_path"):
+            p = Path(person["avatar_path"].lstrip("/"))
+            if p.exists():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+        for emb in embeddings:
+            if emb.get("image_path"):
+                p = Path(emb["image_path"].lstrip("/"))
+                if p.exists():
+                    try:
+                        p.unlink()
+                    except Exception:
+                        pass
+        return True
+    return False
 
 
 def list_people():

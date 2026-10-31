@@ -8,3 +8,5 @@ onnxruntime
 insightface
 passlib[bcrypt]
 PyJWT
+
+pillow
