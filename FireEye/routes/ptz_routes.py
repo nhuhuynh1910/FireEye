@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
+from typing import Optional
 
 from services.camera_service import camera_service
 
@@ -124,3 +125,35 @@ def camera_set_zone(zone_id: int):
         "action": f"set_zone_{zone_id}_preset",
         "preset_id": preset_id
     }
+
+class IntegrationPtzRequest(BaseModel):
+    guard_device_id: str
+    guard_camera_id: int
+    action: str
+    stop_code: str = "left"
+    source_revision: Optional[str] = None
+
+
+@router.post("/api/integration/ptz")
+def integration_ptz(req: IntegrationPtzRequest):
+    reset_mqtt_active_zone()
+    action = req.action.lower()
+    if action == "left":
+        ok = camera_service.move_left()
+    elif action == "right":
+        ok = camera_service.move_right()
+    elif action == "up":
+        ok = camera_service.move_up()
+    elif action == "down":
+        ok = camera_service.move_down()
+    elif action in ("zoom-in", "zoomin", "zoomtele"):
+        ok = camera_service.zoom_in()
+    elif action in ("zoom-out", "zoomout", "zoomwide"):
+        ok = camera_service.zoom_out()
+    elif action == "home":
+        ok = camera_service.go_home()
+    elif action == "stop":
+        ok = camera_service.stop(req.stop_code)
+    else:
+        ok = False
+    return {"success": ok, "action": req.action}
