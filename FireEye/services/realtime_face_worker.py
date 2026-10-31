@@ -135,7 +135,14 @@ def stop_face_worker():
 
 
 def get_face_worker_status():
+    try:
+        from services.face_service import face_app
+        available = face_app is not None
+    except Exception:
+        available = False
+
     return {
+        "available": available,
         "running": _worker_running,
         "scan_interval": SCAN_INTERVAL,
         "cooldown_seconds": COOLDOWN_SECONDS
