@@ -12,6 +12,7 @@ COOLDOWN_SECONDS = 15.0
 
 from services.hailo_service import hailo_service
 from services.mqtt_service import mqtt_service
+from services.audio_service import audio_service
 from services.snapshot_service import capture_snapshot
 from services.db_service import insert_event
 
@@ -149,6 +150,11 @@ async def ai_detect(data: AiDetectRequest):
         )
 
     if danger and should_save_event:
+        try:
+            audio_service.start_alarm(duration=15.0)
+        except Exception as e:
+            print(f"[AI] Error triggering alarm sound: {e}")
+
         mqtt_service.publish_alert({
             "source": "ai",
             "event_type": event_type,

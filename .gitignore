@@ -33,3 +33,7 @@ FireEye/uploads/
 .idea/
 .testdeps/
 
+# OS Packages
+*.deb
+*.rpm
+

@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from services.camera_service import camera_service
 from services.hailo_service import hailo_service
+from services.audio_service import audio_service
 from config.settings import CAMERA_IP
 from data.state import get_overall_status
 
@@ -18,6 +19,8 @@ def get_status():
     status["device"] = "Raspberry Pi 5"
 
     status["aiAccelerator"] = hailo_service.get_status()
+
+    status["speaker"] = audio_service.get_status()
 
     status["camera"] = {
         "type": "Dahua IP Camera LAN",

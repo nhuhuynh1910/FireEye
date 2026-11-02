@@ -18,6 +18,8 @@ from routes.sprinkler_route import router as sprinkler_router
 from routes.auth_route import router as auth_router
 from routes.user_route import router as user_router
 from routes.safety_control_route import router as safety_control_router, restore_active_sessions_on_startup
+from routes.audio_route import router as audio_router
+from services.audio_service import audio_service
 from services.mqtt_service import mqtt_service
 from services.db_service import init_db, create_default_admin_if_not_exists
 from services.cleanup_service import start_cleanup_worker
@@ -34,6 +36,7 @@ async def lifespan(app: FastAPI):
     camera_service.start_grabber()
     yield
     # --- Shutdown ---
+    audio_service.stop_alarm()
     mqtt_service.stop()
     camera_service.stop_grabber()
 
@@ -68,6 +71,7 @@ app.include_router(sprinkler_router)
 app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(safety_control_router)
+app.include_router(audio_router)
 
 
 

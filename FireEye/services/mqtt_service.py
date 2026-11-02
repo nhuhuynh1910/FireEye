@@ -17,6 +17,7 @@ from config.settings import (
 
 from data.state import update_sensor, update_sprinkler
 from services.camera_service import camera_service
+from services.audio_service import audio_service
 
 
 ESP32_MOTOR_TOPIC_BY_ZONE = {
@@ -225,6 +226,12 @@ class MQTTService:
             "message": message
         })
 
+        # Kích hoạt còi hú báo cháy trên loa Pi 5
+        try:
+            audio_service.start_alarm(duration=15.0)
+        except Exception as e:
+            print(f"[MQTT] Error starting alarm sound: {e}")
+
         # Logic khóa xoay camera chống nhiễu khi có nhiều zone báo đồng thời
         now = time.time()
         # Cho phép xoay nếu: Chưa có active_zone, HOẶC đã hết thời gian khóa ZONE_LOCK_DURATION (15s)
@@ -312,6 +319,11 @@ class MQTTService:
         }
 
     def reject_alert(self, zone_id=None):
+        try:
+            audio_service.stop_alarm()
+        except Exception as e:
+            print(f"[MQTT] Error stopping alarm sound: {e}")
+
         if zone_id is not None:
             motor_result = self.publish_motor_zone(int(zone_id), 0)
         elif self.active_zone is not None:
