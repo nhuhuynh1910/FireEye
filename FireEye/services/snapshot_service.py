@@ -8,10 +8,9 @@ SNAPSHOT_DIR = Path("static/snapshots")
 SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def capture_snapshot(event_type: str = "event"):
-    ret, frame = camera_service.get_latest_frame()
-
-    if not ret or frame is None:
+def save_frame_snapshot(frame, event_type: str = "event"):
+    """Lưu trực tiếp frame từ RAM xuống static/snapshots mà không cần query lại camera."""
+    if frame is None:
         return None
 
     # Resize frame to 960x540 to align with the frontend bounding box coordinates
@@ -24,3 +23,12 @@ def capture_snapshot(event_type: str = "event"):
     cv2.imwrite(str(file_path), frame_resized)
 
     return f"/static/snapshots/{filename}"
+
+
+def capture_snapshot(event_type: str = "event"):
+    ret, frame = camera_service.get_latest_frame()
+
+    if not ret or frame is None:
+        return None
+
+    return save_frame_snapshot(frame, event_type)

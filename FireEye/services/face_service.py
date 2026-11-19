@@ -253,7 +253,7 @@ def register_face_from_image(
 
 
 def match_face_from_image(
-    image_path: str,
+    image_input,
     threshold: float = 0.45
 ):
     if face_app is None:
@@ -262,7 +262,12 @@ def match_face_from_image(
             "message": "Không thể đối khớp: Thư viện nhận diện khuôn mặt (insightface) không hoạt động trên thiết bị này"
         }
     global _known_embeddings_cache
-    img = cv2.imread(image_path)
+    if isinstance(image_input, np.ndarray):
+        img = image_input
+    elif isinstance(image_input, str):
+        img = cv2.imread(image_input)
+    else:
+        img = None
 
     if img is None:
         return {

@@ -1,7 +1,9 @@
+import cv2
 import time
 import threading
 
-from services.snapshot_service import capture_snapshot
+from services.camera_service import camera_service
+from services.snapshot_service import save_frame_snapshot
 from services.face_service import match_face_from_image
 from services.db_service import insert_event
 from services.mqtt_service import mqtt_service
@@ -12,6 +14,7 @@ _last_seen = {}
 
 SCAN_INTERVAL = 3
 COOLDOWN_SECONDS = 30
+MOTION_THRESHOLD = 600  # Số pixel biến đổi tối thiểu (trên ảnh 320x180) để coi là có chuyển động
 
 
 def _should_log(key: str):
@@ -28,18 +31,58 @@ def _should_log(key: str):
 def _face_loop():
     global _worker_running
 
+    prev_gray = None
+    active_scans_remaining = 0
+
     while _worker_running:
         try:
-            snapshot_path = capture_snapshot("face_auto")
-
-            if snapshot_path is None:
+            # 1. Lấy frame trực tiếp từ camera_service (qua RAM/SHM, không ghi đĩa)
+            ret, frame = camera_service.get_latest_frame()
+            if not ret or frame is None:
                 time.sleep(SCAN_INTERVAL)
                 continue
 
-            local_path = snapshot_path.replace("/static/", "static/")
-            result = match_face_from_image(local_path)
+            # 2. Motion Gating: Kiểm tra chuyển động trên ảnh xám thu nhỏ (320x180)
+            small = cv2.resize(frame, (320, 180))
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            gray = cv2.GaussianBlur(gray, (21, 21), 0)
 
+            motion_detected = False
+            if prev_gray is not None:
+                frame_delta = cv2.absdiff(prev_gray, gray)
+                thresh = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)[1]
+                motion_pixels = cv2.countNonZero(thresh)
+                if motion_pixels >= MOTION_THRESHOLD:
+                    motion_detected = True
+                    # Duy trì quét thêm 2 chu kỳ tiếp theo để tránh sót người đứng yên sau khi di chuyển
+                    active_scans_remaining = 2
+            else:
+                # Chu kỳ đầu tiên: lưu baseline
+                prev_gray = gray
+                time.sleep(SCAN_INTERVAL)
+                continue
+
+            prev_gray = gray
+
+            # Nếu không có chuyển động và hết cửa sổ active, bỏ qua toàn bộ xử lý Face AI
+            if not motion_detected:
+                if active_scans_remaining > 0:
+                    active_scans_remaining -= 1
+                else:
+                    time.sleep(SCAN_INTERVAL)
+                    continue
+
+            # 3. Chạy nhận dạng khuôn mặt trực tiếp trên frame bộ nhớ (không ghi đĩa trước)
+            result = match_face_from_image(frame)
             faces = result.get("results", [])
+
+            # Nếu không tìm thấy khuôn mặt nào, không cần tạo snapshot tốn dung lượng
+            if not faces:
+                time.sleep(SCAN_INTERVAL)
+                continue
+
+            # 4. Khi có khuôn mặt, lưu snapshot duy nhất 1 lần để làm bằng chứng sự kiện
+            snapshot_path = None
 
             for face in faces:
                 matched = face.get("matched", False)
@@ -50,6 +93,9 @@ def _face_loop():
                     event_key = f"KNOWN_{name}"
 
                     if _should_log(event_key):
+                        if snapshot_path is None:
+                            snapshot_path = save_frame_snapshot(frame, "face_auto")
+
                         message = f"{name} đã có mặt"
 
                         insert_event(
@@ -74,6 +120,9 @@ def _face_loop():
                     event_key = "UNKNOWN_PERSON"
 
                     if _should_log(event_key):
+                        if snapshot_path is None:
+                            snapshot_path = save_frame_snapshot(frame, "face_auto")
+
                         message = "Đã phát hiện người lạ"
 
                         insert_event(
@@ -145,5 +194,6 @@ def get_face_worker_status():
         "available": available,
         "running": _worker_running,
         "scan_interval": SCAN_INTERVAL,
-        "cooldown_seconds": COOLDOWN_SECONDS
+        "cooldown_seconds": COOLDOWN_SECONDS,
+        "motion_gated": True
     }

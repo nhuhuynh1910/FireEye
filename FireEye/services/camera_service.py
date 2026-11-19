@@ -14,6 +14,7 @@ from config.settings import (
     HOME_PRESET,
     CAMERA_PHYSICAL_ROTATION
 )
+from services.shm_frame import SharedFrameReader
 
 
 class VideoGrabber:
@@ -26,6 +27,7 @@ class VideoGrabber:
         self.lock = threading.Lock()
         self.thread = None
         self.last_frame_time = 0.0
+        self.shm_reader = SharedFrameReader()
 
     def start(self):
         if self.running:
@@ -42,21 +44,50 @@ class VideoGrabber:
         if self.cap:
             self.cap.release()
             self.cap = None
+        if hasattr(self, "shm_reader") and self.shm_reader:
+            self.shm_reader.close()
         print("VideoGrabber thread stopped.")
 
     def _grab_loop(self):
+        last_seq = -1
         while self.running:
+            # Ưu tiên đọc từ POSIX Shared Memory (FireGuard) nếu có sẵn
+            if self.shm_reader.is_available(max_age_s=2.0):
+                if self.cap is not None:
+                    print("VideoGrabber: Đã kết nối POSIX Shared Memory từ FireGuard, giải phóng RTSP decoder.")
+                    self.cap.release()
+                    self.cap = None
+
+                ok, frame = self.shm_reader.read(max_age_s=2.0)
+                if ok and frame is not None:
+                    if self.shm_reader.last_seq != last_seq:
+                        last_seq = self.shm_reader.last_seq
+                        if CAMERA_PHYSICAL_ROTATION != 0:
+                            if CAMERA_PHYSICAL_ROTATION == 90:
+                                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                            elif CAMERA_PHYSICAL_ROTATION == 180:
+                                frame = cv2.rotate(frame, cv2.ROTATE_180)
+                            elif CAMERA_PHYSICAL_ROTATION == 270:
+                                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                        with self.lock:
+                            self.ret = True
+                            self.frame = frame
+                            self.last_frame_time = time.time()
+                    time.sleep(0.02)
+                    continue
+
+            # Fallback sang RTSP trực tiếp nếu FireGuard không chạy hoặc không có SHM
             if self.cap is None or not self.cap.isOpened():
                 if self.cap:
                     self.cap.release()
-                print(f"Connecting to RTSP: {self.rtsp_url}")
+                print(f"Connecting to RTSP (Fallback): {self.rtsp_url}")
                 self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
                 self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 if not self.cap.isOpened():
                     print("Failed to open camera stream. Retrying in 3 seconds...")
                     time.sleep(3)
                     continue
-                print("Camera stream connected successfully.")
+                print("Camera stream connected successfully via RTSP fallback.")
 
             # Read frame
             ret, frame = self.cap.read()
