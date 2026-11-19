@@ -9,10 +9,7 @@ from config.settings import (
     MQTT_ALERT_TOPIC,
     MQTT_CONTROL_TOPIC,
     MQTT_USERNAME,
-    MQTT_PASSWORD,
-    ESP32_SENSOR_TOPIC_TO_ZONE,
-    GAS_THRESHOLD,
-    TEMP_THRESHOLD
+    MQTT_PASSWORD
 )
 
 from data.state import update_sensor, update_sprinkler
@@ -70,14 +67,6 @@ class MQTTService:
             client.subscribe(MQTT_SENSOR_TOPIC)
             client.subscribe(MQTT_CONTROL_TOPIC)
 
-            for topic in ESP32_SENSOR_TOPIC_TO_ZONE.keys():
-                client.subscribe(topic)
-                print("Subscribed ESP32:", topic)
-
-            for zone in [1, 2, 3, 4]:
-                client.subscribe(f"esp32c3_{zone}/data")
-                print(f"Subscribed ESP32 JSON data topic: esp32c3_{zone}/data")
-
         else:
             self.connected = False
             print("MQTT failed, rc =", rc)
@@ -87,14 +76,6 @@ class MQTTService:
         payload = msg.payload.decode("utf-8").strip()
 
         print("MQTT message:", topic, payload)
-
-        if topic.endswith("/data") and topic.startswith("esp32c3_"):
-            self.handle_esp32_json_data(topic, payload)
-            return
-
-        if topic in ESP32_SENSOR_TOPIC_TO_ZONE:
-            self.handle_esp32_legacy_sensor(topic, payload)
-            return
 
         try:
             data = json.loads(payload)
@@ -371,7 +352,6 @@ class MQTTService:
             "sensorTopic": MQTT_SENSOR_TOPIC,
             "alertTopic": MQTT_ALERT_TOPIC,
             "controlTopic": MQTT_CONTROL_TOPIC,
-            "esp32Topics": ESP32_SENSOR_TOPIC_TO_ZONE,
             "activeZone": self.active_zone
         }
 
