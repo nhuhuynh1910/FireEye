@@ -88,6 +88,7 @@ def _face_loop():
                         mqtt_service.publish_alert({
                             "source": "face_ai",
                             "event_type": "UNKNOWN_PERSON",
+                            "risk_level": "HIGH",
                             "message": message,
                             "confidence": confidence,
                             "snapshot": snapshot_path
