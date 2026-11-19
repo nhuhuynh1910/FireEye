@@ -17,8 +17,13 @@ def get_now():
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA cache_size = -64000")
+    conn.execute("PRAGMA temp_store = MEMORY")
+    conn.execute("PRAGMA busy_timeout = 15000")
     return conn
 
 
@@ -209,6 +214,11 @@ def init_db():
             expires_at TEXT NOT NULL
         )
     """)
+
+    # Tạo chỉ mục (Indexes) để tăng tốc truy vấn sự kiện và dọn dẹp dữ liệu
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_face_embeddings_person ON face_embeddings(person_id);")
 
     conn.commit()
     conn.close()

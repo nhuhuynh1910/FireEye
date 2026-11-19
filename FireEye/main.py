@@ -21,7 +21,7 @@ from routes.audio_route import router as audio_router
 from services.audio_service import audio_service
 from services.mqtt_service import mqtt_service
 from services.db_service import init_db, create_default_admin_if_not_exists
-from services.cleanup_service import start_cleanup_worker
+from services.cleanup_service import start_cleanup_worker, stop_cleanup_worker
 from services.camera_service import camera_service
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
     yield
     # --- Shutdown ---
     audio_service.stop_alarm()
+    stop_cleanup_worker()
     mqtt_service.stop()
     camera_service.stop_grabber()
 
