@@ -18,6 +18,7 @@ from routes.auth_route import router as auth_router
 from routes.user_route import router as user_router
 from routes.safety_control_route import router as safety_control_router, restore_active_sessions_on_startup
 from routes.audio_route import router as audio_router
+from routes.gateway_route import router as gateway_router
 from services.audio_service import audio_service
 from services.mqtt_service import mqtt_service
 from services.db_service import init_db, create_default_admin_if_not_exists
@@ -61,6 +62,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 DASHBOARD_DIST = Path(__file__).resolve().parent.parent / "FE" / "dashboard-app" / "dist"
 if DASHBOARD_DIST.exists():
     app.mount("/dashboard", StaticFiles(directory=str(DASHBOARD_DIST), html=True), name="dashboard")
+    if (DASHBOARD_DIST / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(DASHBOARD_DIST / "assets")), name="assets")
 
 app.include_router(status_router)
 app.include_router(camera_router)
@@ -74,60 +77,45 @@ app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(safety_control_router)
 app.include_router(audio_router)
+app.include_router(gateway_router)
 
 
+from fastapi import Request
+from fastapi.responses import FileResponse, RedirectResponse, Response
+
+
+@app.get("/favicon.svg", include_in_schema=False)
+def get_favicon():
+    fav = DASHBOARD_DIST / "favicon.svg"
+    if fav.exists():
+        return FileResponse(str(fav))
+    return Response(status_code=404)
+
+
+@app.get("/icons.svg", include_in_schema=False)
+def get_icons():
+    icons = DASHBOARD_DIST / "icons.svg"
+    if icons.exists():
+        return FileResponse(str(icons))
+    return Response(status_code=404)
 
 
 @app.get("/")
-def home():
+def home(request: Request):
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and DASHBOARD_DIST.exists():
+        return RedirectResponse(url="/dashboard/")
     return {
-        "message": "FireEye Backend Running",
+        "message": "IGNIVO Unified System Gateway Running",
         "framework": "FastAPI",
         "device": "Raspberry Pi 5 + Hailo 8L",
         "camera": "Dahua IP Camera LAN",
-        "mqtt": "enabled",
-        "apis": [
-            "/api/status",
-
-            "/api/camera/status",
-            "/api/camera/stream",
-            "/api/camera/left",
-            "/api/camera/right",
-            "/api/camera/up",
-            "/api/camera/down",
-            "/api/camera/zoom-in",
-            "/api/camera/zoom-out",
-            "/api/camera/stop",
-            "/api/camera/zone/{zone_id}",
-            "/api/camera/home",
-            "/api/camera/zones",
-
-            "/api/sensors",
-            "/api/sensors/update",
-
-            "/api/ai/status",
-            "/api/ai/detect",
-
-            "/api/mqtt/status",
-            "/api/events",
-
-            "/api/notifications",
-            "/api/notifications/unread-count",
-            "/api/notifications/read-all",
-            "/api/notifications/{event_id}/read",
-
-            "/api/faces/register",
-            "/api/faces/match",
-            "/api/faces/match-camera",
-            "/api/faces/watch/start",
-            "/api/faces/watch/stop",
-            "/api/faces/watch/status",
-            "/api/faces/people",
-
-            "/static/snapshots/{filename}",
-            "/api/sprinkler/zone/{zone_id}/accept",
-            "/api/sprinkler/zone/{zone_id}/reject",
-        ]
+        "endpoints": {
+            "dashboard_ui": "/dashboard/",
+            "fireguard_ui": "/ui/",
+            "emergency_api": "/api/v1/emergency",
+            "fireeye_api": "/api"
+        }
     }
 
 
